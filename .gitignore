@@ -1,0 +1,64 @@
+# Object files
+*.o
+*.obj
+
+# Executable and binary files
+*.bin
+kernel.elf
+os.img
+*.exe
+
+# Temporary files created during testing
+boot.img
+
+# Debug files
+*.log
+debug.log
+serial.log
+qemu.log
+
+# Build artifacts
+*.a
+*.lib
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux specific
+*~
+
+# Windows specific
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# List files
+*.lst
+
+# Temporary test files
+test_*
+temp_*
+
+# Core dumps
+core
+core.*
+
+# Development tools directories
+.claude/
+.serena/
+.opencode/
+.vscode/
