@@ -50,7 +50,7 @@ start:
 
 .read_ok:
 
-	;    GDT をロード（本ファイル内定義。%include は使用しない）
+	;    GDT をロード
 	lgdt [gdt_descriptor]
 
 	;   プロテクトモードへ移行

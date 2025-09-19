@@ -19,7 +19,7 @@
 -   **保守性**: 高レベル言語による意図の明確な表現
 -   **実用性**: Linux、Windows 等、実際の OS は C/C++で開発
 
-Day 03 からは C を中心に実装します。最終形（day99_completed）の構成に近づけるため、ブート関連は `boot/boot.s`（16bit）と `boot/kernel_entry.s`（32bit エントリ）に分割します。GDT は `%include` せずに `boot.s` 内へ統合します。表示は `kernel.c` と `vga.h` の C 実装で行います。
+Day 03 からは C を中心に実装します。最終形（day99_completed）の構成に近づけるため、ブート関連は `boot/boot.s`（16bit）と `boot/kernel_entry.s`（32bit エントリ）に分割します。GDT は `boot.s` 内へ統合します。表示は `kernel.c` と `vga.h` の C 実装で行います。
 
 ## 学習内容
 
@@ -310,7 +310,7 @@ void kmain(void) {
 `boot.s` は次を実施します：
 
 -   割り込み無効化、A20 有効化（0x92）
--   GDT を「ファイル内に定義」し、`lgdt` で登録（%include は使わない）
+-   GDT を「ファイル内に定義」し、`lgdt` で登録
 -   BIOS `INT 0x13` でディスク第 2 セクタ以降を `0x00100000` へ読み込み（固定セクタ数で簡易）
 -   KERNEL_SECTORS セクタ分をメモリに読み込むようになっています。127 セクタの場合、127 x 512 バイト = 63.5 キロバイトが読み込まれます
 -   `CR0.PE=1` でプロテクトモードへ → `jmp dword 0x08:kernel_entry` で 32bit へ
@@ -340,7 +340,7 @@ start:
   mov cr0, eax
   jmp dword 0x08:kernel_entry   ; 32bit far jump
 
-; --- GDT (in-file, no %include) ---
+; --- GDT ---
 align 8
 gdt_start:
   dq 0x0000000000000000

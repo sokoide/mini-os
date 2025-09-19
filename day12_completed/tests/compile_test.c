@@ -3,8 +3,8 @@
  * 【目的】すべての分割関数が正しくコンパイル・実行できることを検証
  */
 
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 // Day12の主要関数のテスト用スタブ
@@ -20,7 +20,8 @@ static int test_index = 0;
 
 void add_test_result(const char* test_name, int passed) {
     if (test_index < 16) {
-        snprintf(tests[test_index].name, sizeof(tests[test_index].name), "%s", test_name);
+        snprintf(tests[test_index].name, sizeof(tests[test_index].name), "%s",
+                 test_name);
         tests[test_index].test_passed = passed;
         tests[test_index].test_count = 1;
         test_index++;
@@ -34,9 +35,7 @@ void test_vga_functions(void) {
     printf("Testing VGA functions...\n");
 
     // VGA色定義テスト
-    typedef enum {
-        VGA_BLACK = 0, VGA_WHITE = 15
-    } vga_color_t;
+    typedef enum { VGA_BLACK = 0, VGA_WHITE = 15 } vga_color_t;
 
     vga_color_t test_color = VGA_WHITE;
     int test_passed = (test_color == 15);
@@ -119,7 +118,8 @@ void test_interrupt_management(void) {
 
     int test_passed = (timer_irq == 32 && keyboard_irq == 33);
 
-    printf("  Interrupt number definitions: %s\n", test_passed ? "PASS" : "FAIL");
+    printf("  Interrupt number definitions: %s\n",
+           test_passed ? "PASS" : "FAIL");
     add_test_result("Interrupt Management", test_passed);
 }
 
@@ -193,7 +193,8 @@ int main(void) {
     printf("実行テスト数: %d\n", total_tests);
     printf("成功テスト数: %d\n", passed_tests);
     printf("失敗テスト数: %d\n", total_tests - passed_tests);
-    printf("成功率: %.1f%%\n", total_tests > 0 ? (100.0 * passed_tests / total_tests) : 0.0);
+    printf("成功率: %.1f%%\n",
+           total_tests > 0 ? (100.0 * passed_tests / total_tests) : 0.0);
 
     if (passed_tests == total_tests) {
         printf("\n✅ 全ての分割関数テストが成功しました！\n");

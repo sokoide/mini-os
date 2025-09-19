@@ -1,14 +1,17 @@
 # Day 04: Serial Port Debug (freestanding C + Inline Assembly) 🔧
 
 ## Today's Goal
+
 Build a debug environment using UART serial port and implement a dual output system for VGA and serial.
 
 ## Background
+
 While we achieved C language transition in Day 3, debug capabilities limited to VGA screen have limitations. Today we'll build debug infrastructure using serial ports, creating a more efficient OS development environment with log saving and continuous output capabilities.
 
 ## New Concepts
-- **I/O Ports (inb, outb)**: Mechanism for communicating with hardware using address space (I/O space) separate from memory space. inb instruction reads data from port, outb writes. Basic method for hardware control.
-- **Inline Assembly**: GCC feature for writing x86 assembly directly within C code. Essential for hardware access.
+
+-   **I/O Ports (inb, outb)**: Mechanism for communicating with hardware using address space (I/O space) separate from memory space. inb instruction reads data from port, outb writes. Basic method for hardware control.
+-   **Inline Assembly**: GCC feature for writing x86 assembly directly within C code. Essential for hardware access.
 
 ## Learning Content
 
@@ -25,12 +28,13 @@ While we achieved C language transition in Day 3, debug capabilities limited to 
 -   The wait `while(!(inb(COM1+5) & 0x20)) {}` is checking this confirmation.
 
 ## Task List
-- [ ] Create io.h header file and implement inb/outb functions with inline assembly
-- [ ] Understand UART registers and initialize COM1 port
-- [ ] Implement serial output functions in kernel.c and transmit data using polling method
-- [ ] Build parallel output system for VGA and serial
-- [ ] Use QEMU -serial option to verify serial output
-- [ ] Complete dual output environment as debug infrastructure
+
+-   [ ] Create io.h header file and implement inb/outb functions with inline assembly
+-   [ ] Understand UART registers and initialize COM1 port
+-   [ ] Implement serial output functions in kernel.c and transmit data using polling method
+-   [ ] Build parallel output system for VGA and serial
+-   [ ] Use QEMU -serial option to verify serial output
+-   [ ] Complete dual output environment as debug infrastructure
 
 ## Prerequisites Check
 
@@ -178,9 +182,9 @@ void kmain(void){
 | COM1+0 | THR/RBR/DLL | Transmit/receive buffer, divisor low when DLAB |
 | COM1+1 | IER/DLM     | Interrupt enable, divisor high when DLAB       |
 | COM1+2 | FCR/IIR     | FIFO control/interrupt identification          |
-| COM1+3 | LCR         | Line control (data length, parity, DLAB)      |
-| COM1+4 | MCR         | Modem control (RTS, DTR, OUT)                 |
-| COM1+5 | LSR         | Line status (transmit/receive ready, errors)  |
+| COM1+3 | LCR         | Line control (data length, parity, DLAB)       |
+| COM1+4 | MCR         | Modem control (RTS, DTR, OUT)                  |
+| COM1+5 | LSR         | Line status (transmit/receive ready, errors)   |
 
 #### Initialization Procedure Theory
 
@@ -193,16 +197,16 @@ void kmain(void){
 
 #### I/O Port vs Memory Map
 
-| Method           | Access Method            | Example        | Characteristics              |
-| ---------------- | ------------------------ | -------------- | ---------------------------- |
-| **I/O Port**     | `in`/`out` instructions  | UART, PIC, PIT | Dedicated address space, fast |
-| **Memory Map**   | Normal memory read/write | VGA (0xB8000)  | Uses part of memory space    |
+| Method         | Access Method            | Example        | Characteristics               |
+| -------------- | ------------------------ | -------------- | ----------------------------- |
+| **I/O Port**   | `in`/`out` instructions  | UART, PIC, PIT | Dedicated address space, fast |
+| **Memory Map** | Normal memory read/write | VGA (0xB8000)  | Uses part of memory space     |
 
 ### 5. boot/boot.s (Architecture Continuation)
 
 Continue the architecture established in Day 03:
 
--   **GDT Integration**: Define directly in boot.s without using `%include`
+-   **GDT Integration**: Define directly in boot.s
 -   **Kernel Loading**: Load from sector 2 to `0x00100000` with `INT 13h`
 -   **Protected Mode**: `CR0.PE=1` → `jmp 0x08:kernel_entry` (without `dword`)
 

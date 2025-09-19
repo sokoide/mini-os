@@ -19,7 +19,7 @@
 -   **Maintainability**: Clear expression of intent through high-level language
 -   **Practicality**: Real OS like Linux and Windows are developed in C/C++
 
-From Day 03, we implement primarily in C. To approach the final form (day99_completed) structure, boot-related files are split into `boot/boot.s` (16-bit) and `boot/kernel_entry.s` (32-bit entry). GDT is integrated into `boot.s` without `%include`. Display is implemented in C with `kernel.c` and `vga.h`.
+From Day 03, we implement primarily in C. To approach the final form (day99_completed) structure, boot-related files are split into `boot/boot.s` (16-bit) and `boot/kernel_entry.s` (32-bit entry). GDT is integrated into `boot.s`. Display is implemented in C with `kernel.c` and `vga.h`.
 
 ## Learning Content
 
@@ -83,14 +83,14 @@ From Day 03 onwards, we develop in a "freestanding C" environment that differs g
 
 ### Normal C Environment vs freestanding C Environment
 
-| Item                   | Normal C Environment                        | freestanding C Environment (OS Development)     |
-| ---------------------- | ------------------------------------------- | ------------------------------------------------ |
-| **Standard Library**   | `printf`, `malloc`, `strlen`, etc. available | **Not available** - must implement yourself     |
-| **Memory Management**  | Heap management with `malloc`/`free`       | **Custom implementation** - direct physical memory management |
-| **String Operations**  | `strlen`, `strcpy`, etc. available         | **Custom implementation** - manual character-by-character processing |
-| **I/O Operations**     | Console output with `printf`               | **Direct hardware control** - VGA/serial        |
-| **Startup Process**    | Automatic start from `main()`              | **Bootloader manual call**                      |
-| **Linker**             | OS decides memory placement                 | **Explicitly specify memory placement**         |
+| Item                  | Normal C Environment                         | freestanding C Environment (OS Development)                          |
+| --------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
+| **Standard Library**  | `printf`, `malloc`, `strlen`, etc. available | **Not available** - must implement yourself                          |
+| **Memory Management** | Heap management with `malloc`/`free`         | **Custom implementation** - direct physical memory management        |
+| **String Operations** | `strlen`, `strcpy`, etc. available           | **Custom implementation** - manual character-by-character processing |
+| **I/O Operations**    | Console output with `printf`                 | **Direct hardware control** - VGA/serial                             |
+| **Startup Process**   | Automatic start from `main()`                | **Bootloader manual call**                                           |
+| **Linker**            | OS decides memory placement                  | **Explicitly specify memory placement**                              |
 
 ### Elements Prohibited/Unavailable in freestanding C
 
@@ -310,7 +310,7 @@ Note: `outb` is provided by boot side (or implemented in C as io.h in later sess
 `boot.s` performs the following:
 
 -   Disable interrupts, enable A20 (0x92)
--   Define GDT "within file" and register with `lgdt` (don't use %include)
+-   Define GDT "within file" and register with `lgdt`
 -   Load sector 2 onwards from disk to `0x00100000` with BIOS `INT 0x13` (simple fixed sector count)
 -   KERNEL_SECTORS sectors are loaded into memory. For 127 sectors, 127 x 512 bytes = 63.5 kilobytes are loaded
 -   Enter protected mode with `CR0.PE=1` → `jmp dword 0x08:kernel_entry` to 32-bit
@@ -340,7 +340,7 @@ start:
   mov cr0, eax
   jmp dword 0x08:kernel_entry   ; 32-bit far jump
 
-; --- GDT (in-file, no %include) ---
+; --- GDT ---
 align 8
 gdt_start:
   dq 0x0000000000000000
