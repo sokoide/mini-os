@@ -352,24 +352,24 @@ Example: DS = 0x10 = 0001 0000
 
 #### Access Rights Details
 
-| Field              | Code(0x9A) | Data(0x92) | Meaning                 |
-| ------------------ | ---------- | ---------- | ----------------------- |
-| **P** (Present)    | 1          | 1          | Segment present         |
-| **DPL** (Privilege) | 00         | 00         | Kernel level            |
-| **S** (Type)       | 1          | 1          | Code/data segment       |
-| **E** (Executable) | 1          | 0          | Executable/non-executable |
-| **DC**             | 0          | 0          | Expand direction        |
-| **RW**             | 1          | 1          | Read/write allowed      |
-| **A** (Accessed)   | 0          | 0          | 0 when unused           |
+| Field               | Code(0x9A) | Data(0x92) | Meaning                   |
+| ------------------- | ---------- | ---------- | ------------------------- |
+| **P** (Present)     | 1          | 1          | Segment present           |
+| **DPL** (Privilege) | 00         | 00         | Kernel level              |
+| **S** (Type)        | 1          | 1          | Code/data segment         |
+| **E** (Executable)  | 1          | 0          | Executable/non-executable |
+| **DC**              | 0          | 0          | Expand direction          |
+| **RW**              | 1          | 1          | Read/write allowed        |
+| **A** (Accessed)    | 0          | 0          | 0 when unused             |
 
 #### Flag Details
 
-| Bit     | Name      | Value | Meaning               |
-| ------- | --------- | ----- | --------------------- |
-| **G**   | Granularity | 1     | 4KB page units       |
-| **D/B** | Size      | 1     | 32-bit segment        |
-| **L**   | 64-bit    | 0     | 32-bit mode           |
-| **AVL** | Available | 0     | OS available bit      |
+| Bit     | Name        | Value | Meaning          |
+| ------- | ----------- | ----- | ---------------- |
+| **G**   | Granularity | 1     | 4KB page units   |
+| **D/B** | Size        | 1     | 32-bit segment   |
+| **L**   | 64-bit      | 0     | 32-bit mode      |
+| **AVL** | Available   | 0     | OS available bit |
 
 #### Protected Mode Transition Flow
 
@@ -403,12 +403,86 @@ mov ds, ax    ; Update all data segments
 3. Garbled characters
     - Writing to VGA buffer 0xB8000 in 2-byte units (character+attribute)?
 
+## Segment Protection Mechanism
+
+### How Code and Data Segments Work with Same Address Range
+
+Even though both code segment (0x08) and data segment (0x10) cover the same address range (0x00000000-0xFFFFFFFF), they have **different access permissions**:
+
+**Code Segment (0x08)**: Access byte `0x9A`
+
+-   ✅ Executable (can run instructions)
+-   ✅ Readable (can read constants)
+-   ❌ **Not writable** (cannot modify)
+
+**Data Segment (0x10)**: Access byte `0x92`
+
+-   ✅ Readable (can read data)
+-   ✅ Writable (can modify data)
+-   ❌ **Not executable** (cannot run as code)
+
+### Practical Examples
+
+```assembly
+; Same physical address 0x1000, different access depending on segment used:
+
+; Using code segment selector (CS = 0x08)
+jmp 0x08:0x1000        ; ✅ Execute instructions at 0x1000 (allowed)
+mov eax, cs:[0x1000]   ; ✅ Read constant from 0x1000 (allowed)
+mov cs:[0x1000], eax   ; ❌ PROTECTION FAULT! (write to code segment)
+
+; Using data segment selector (DS = 0x10)
+mov eax, [0x1000]      ; ✅ Read data from 0x1000 (allowed)
+mov [0x1000], eax      ; ✅ Write data to 0x1000 (allowed)
+jmp 0x10:0x1000        ; ❌ PROTECTION FAULT! (execute from data segment)
+```
+
+### Default Segment Selection
+
+When no segment is explicitly specified, CPU automatically chooses based on instruction type:
+
+| Instruction Type       | Default Segment | Example                      |
+| ---------------------- | --------------- | ---------------------------- |
+| **Instruction fetch**  | CS (Code)       | `call function`, `jmp label` |
+| **Stack operations**   | SS (Stack)      | `push eax`, `pop ebx`        |
+| **Data access**        | DS (Data)       | `mov eax, [0x1000]`          |
+| **String destination** | ES (Extra)      | `stosb`, `rep movsb`         |
+
+```assembly
+; These instructions use different default segments:
+mov eax, 0x1000        ; Immediate value (no memory access)
+mov eax, [0x1000]      ; DS:0x1000 (data read)
+push eax               ; SS:ESP (stack write)
+call 0x2000            ; CS:0x2000 (code execution)
+```
+
+### Memory Protection in Action
+
+This mechanism provides **memory protection** even with overlapping address ranges:
+
+```
+Physical Memory Address 0x1000:
+┌─────────────────────────────────┐
+│     Same Memory Location        │
+├─────────────────────────────────┤
+│ Via CS (0x08): Read/Execute OK  │
+│                Write FORBIDDEN  │
+├─────────────────────────────────┤
+│ Via DS (0x10): Read/Write OK    │
+│                Execute FORBIDDEN│
+└─────────────────────────────────┘
+```
+
+This is the foundation of modern OS security - preventing code injection and protecting critical system code from accidental modification.
+
 ## Understanding Check
 
 1. What happens if A20 line is disabled?
 2. What do GDT access bytes 0x9A/0x92 mean respectively?
 3. What could happen if PE=1 is set without inserting far jump?
 4. Why not use BIOS interrupts after 32-bit transition?
+5. Why can't you execute code from a data segment even if it contains valid instructions?
+6. What happens when you try to write to a code segment?
 
 ## Preparing for Next Steps
 
