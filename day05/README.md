@@ -69,6 +69,88 @@ While we've built a freestanding C environment through Day 4, OS development req
 -   **Register Preservation**: CPU state save/restore mechanism during interrupts
 -   **Calling Conventions**: Safe transition from assembly to C functions
 
+### CPU Exceptions (Exception) 0-31 Details
+
+x86 architecture defined CPU exceptions classified and explained:
+
+#### 0-7: Common Programming Errors
+
+-   **0: Divide Error (#DE)** - Division by zero occurs
+-   **1: Debug Exception (#DB)** - Debug function related exceptions
+-   **2: NMI (Non-Maskable Interrupt)** - Memory parity errors and other serious hardware errors
+-   **3: Breakpoint (#BP)** - `int 3` instruction (breakpoint) execution
+-   **4: Overflow (#OF)** - Arithmetic overflow by INTO instruction
+-   **5: BOUND Range Exceeded (#BR)** - Boundary check violation by BOUND instruction
+-   **6: Invalid Opcode (#UD)** - Undefined or invalid instruction codes
+-   **7: Device Not Available (#NM)** - Coprocessor (FPU, etc.) not available
+
+#### 8-15: Serious System Errors
+
+-   **8: Double Fault (#DF)** - Another exception occurs during exception handling
+-   **9: Coprocessor Segment Overrun** - Coprocessor segment overrun (legacy)
+-   **10: Invalid TSS (#TS)** - Task State Segment (TSS) is invalid
+-   **11: Segment Not Present (#NP)** - Referenced segment does not exist
+-   **12: Stack Segment Fault (#SS)** - Stack segment error
+-   **13: General Protection Fault (#GP)** - General protection violation (segment limit exceeded, etc.)
+-   **14: Page Fault (#PF)** - Page fault (memory access violation)
+-   **15: Reserved** - Reserved for future expansion
+
+#### 16-31: System Features and Reserved Areas
+
+-   **16: Floating Point Error (#MF)** - Floating point operation error
+-   **17: Alignment Check (#AC)** - Alignment check violation
+-   **18-31: Reserved** - System reserved or for future CPU features
+
+#### Classification by Error Code Presence
+
+-   **Without Error Code**: 0, 1, 2, 3, 4, 5, 6, 7, 9, 16, 17, etc.
+-   **With Error Code**: 8, 10, 11, 12, 13, 14, etc. (CPU automatically pushes error information to stack)
+
+#### Exceptions and Interrupts with Error Codes
+
+| Category | Number | Name | Error Code Content | Description |
+|---------|--------|------|-------------------|-------------|
+| **Exception** | 8 | Double Fault (#DF) | None | Exception occurred during exception handling |
+| **Exception** | 10 | Invalid TSS (#TS) | Selector | Invalid Task State Segment |
+| **Exception** | 11 | Segment Not Present (#NP) | Selector | Segment does not exist |
+| **Exception** | 12 | Stack Segment Fault (#SS) | Stack selector | Stack segment error |
+| **Exception** | 13 | General Protection (#GP) | Selector/Details | General protection violation |
+| **Exception** | 14 | Page Fault (#PF) | CR2 register | Memory access violation address |
+| **Interrupt** | 32-47 | PIC IRQ 0-15 | **None** | Standard hardware interrupts |
+| **Interrupt** | 48-255 | Software interrupts | Depends on context | OS-specific, system calls |
+
+**Note**: Standard PIC interrupts (IRQ 0-15) do not have CPU-pushed error codes. Software interrupts (system calls, etc.) may or may not have error codes depending on OS design.
+
+### Hardware Interrupts (IRQ) 32-255
+
+#### IRQ 32-47: PIC Managed Standard Interrupts
+
+IRQ 0-15 are remapped to 32-47 by BIOS:
+
+-   **32 (IRQ0)**: System timer (PIT - Programmable Interval Timer)
+-   **33 (IRQ1)**: Keyboard controller
+-   **34 (IRQ2)**: PIC cascade (connected to slave PIC)
+-   **35 (IRQ3)**: Serial port (COM2/COM4)
+-   **36 (IRQ4)**: Serial port (COM1/COM3)
+-   **37 (IRQ5)**: Sound card or reserved
+-   **38 (IRQ6)**: Floppy disk controller
+-   **39 (IRQ7)**: Parallel port (printer)
+-   **40 (IRQ8)**: Real-time clock (RTC)
+-   **41 (IRQ9)**: Redirected IRQ2
+-   **42 (IRQ10)**: Reserved
+-   **43 (IRQ11)**: Reserved
+-   **44 (IRQ12)**: PS/2 mouse
+-   **45 (IRQ13)**: Coprocessor (FPU interrupt)
+-   **46 (IRQ14)**: IDE primary controller
+-   **47 (IRQ15)**: IDE secondary controller
+
+#### IRQ 48-255: Software Interrupts and Extended Features
+
+-   **48-255**: Software interrupts, APIC, PCI interrupts, system calls
+-   **Software Interrupts**: OS-specific interrupts (system calls, etc.)
+-   **APIC Interrupts**: Inter-processor interrupts in multiprocessor systems
+-   **PCI Interrupts**: Extended interrupts for PCI devices
+
 ## Approach and Configuration
 
 Like Day 03/04, keep assembly minimal (under boot/) and manage IDT in C.
@@ -141,12 +223,12 @@ struct idt_entry {
 
 #### Flag Field Details
 
-| Bit | Meaning | Description                                  |
-| --- | ------- | -------------------------------------------- |
-| 7   | Present | Entry is valid (1=valid, 0=invalid)         |
-| 6-5 | DPL     | Privilege level (0=kernel, 3=user)          |
-| 4   | Storage | Always 0 (system descriptor)                |
-| 3-0 | Type    | Gate type (0xE=32-bit interrupt gate)       |
+| Bit | Meaning | Description                           |
+| --- | ------- | ------------------------------------- |
+| 7   | Present | Entry is valid (1=valid, 0=invalid)   |
+| 6-5 | DPL     | Privilege level (0=kernel, 3=user)    |
+| 4   | Storage | Always 0 (system descriptor)          |
+| 3-0 | Type    | Gate type (0xE=32-bit interrupt gate) |
 
 ### 3. IDT Management System
 
