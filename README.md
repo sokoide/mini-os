@@ -1,5 +1,10 @@
 # Mini OS Learning Curriculum - Master OS Development in 12 Days 🚀
 
+---
+
+🌐 Available languages:
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## 📖 Explanation for Software Engineers
 
 **What makes this project special:**
@@ -272,34 +277,34 @@ sudo unzip ~/Downloads/i686-elf-tools-linux.zip
 
 **Goal**: Bootloader and C kernel basics
 
-| Day              | Theme                     | Main Learning Content                         | Output                    |
-| ---------------- | ------------------------- | --------------------------------------------- | ------------------------- |
-| [Day 01](day01/) | Bootloader basics         | BIOS, MBR, 16-bit x86 assembly               | "Hello World" bootloader  |
-| [Day 02](day02/) | Protected mode transition | A20 line, GDT, 32-bit switching              | VGA text display          |
-| [Day 03](day03/) | C language integration    | freestanding C, VGA API                       | C kernel foundation       |
-| [Day 04](day04/) | Serial debugging          | UART, I/O ports, inline assembly             | Debug environment setup   |
+| Day              | Theme                     | Main Learning Content            | Output                   |
+| ---------------- | ------------------------- | -------------------------------- | ------------------------ |
+| [Day 01](day01/) | Bootloader basics         | BIOS, MBR, 16-bit x86 assembly   | "Hello World" bootloader |
+| [Day 02](day02/) | Protected mode transition | A20 line, GDT, 32-bit switching  | VGA text display         |
+| [Day 03](day03/) | C language integration    | freestanding C, VGA API          | C kernel foundation      |
+| [Day 04](day04/) | Serial debugging          | UART, I/O ports, inline assembly | Debug environment setup  |
 
 ### Phase 2: Systems (Day 05-08)
 
 **Goal**: Interrupt system and multithreading foundations
 
-| Day              | Theme                | Main Learning Content         | Output                   |
-| ---------------- | -------------------- | ----------------------------- | ------------------------ |
-| [Day 05](day05/) | Interrupt infrastructure | IDT, exception handling, ISR stubs | Exception handler system |
-| [Day 06](day06/) | Timer interrupts     | PIC, PIT, IRQ0 handling       | 100Hz timer operation    |
-| [Day 07](day07/) | Thread data structures | TCB, READY list, state management | Multithreading foundation |
-| [Day 08](day08/) | Context switching    | Register save/restore, ESP switching | Thread switching functionality |
+| Day              | Theme                    | Main Learning Content                | Output                         |
+| ---------------- | ------------------------ | ------------------------------------ | ------------------------------ |
+| [Day 05](day05/) | Interrupt infrastructure | IDT, exception handling, ISR stubs   | Exception handler system       |
+| [Day 06](day06/) | Timer interrupts         | PIC, PIT, IRQ0 handling              | 100Hz timer operation          |
+| [Day 07](day07/) | Thread data structures   | TCB, READY list, state management    | Multithreading foundation      |
+| [Day 08](day08/) | Context switching        | Register save/restore, ESP switching | Thread switching functionality |
 
 ### Phase 3: Applications (Day 09-12)
 
 **Goal**: Complete practical OS
 
-| Day              | Theme                              | Main Learning Content          | Output               |
-| ---------------- | ---------------------------------- | ------------------------------ | -------------------- |
-| [Day 09](day09/) | Preemptive scheduling              | Round-robin, time slicing      | Automatic thread switching |
-| [Day 10](day10/) | Sleep/timing                       | Blocking, wake-up              | sleep() function implementation |
-| [Day 11](day11/) | Keyboard input system              | PS/2, ring buffer, IRQ1        | User input processing |
-| [Day 12](day12/) | Integration and final project      | Quality improvement, testing, documentation | Complete OS |
+| Day              | Theme                         | Main Learning Content                       | Output                          |
+| ---------------- | ----------------------------- | ------------------------------------------- | ------------------------------- |
+| [Day 09](day09/) | Preemptive scheduling         | Round-robin, time slicing                   | Automatic thread switching      |
+| [Day 10](day10/) | Sleep/timing                  | Blocking, wake-up                           | sleep() function implementation |
+| [Day 11](day11/) | Keyboard input system         | PS/2, ring buffer, IRQ1                     | User input processing           |
+| [Day 12](day12/) | Integration and final project | Quality improvement, testing, documentation | Complete OS                     |
 
 ## 🚀 Quick Start
 

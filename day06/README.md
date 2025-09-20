@@ -1,5 +1,11 @@
 # Day 06: Timer Interrupts (PIC/PIT) ⏱️
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Initialize hardware timer (PIT) and interrupt controller (PIC), generate 100Hz timer interrupts, and verify operation.

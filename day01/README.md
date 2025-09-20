@@ -1,5 +1,11 @@
 # Day 01: PC Boot Fundamentals 🖥️
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Understand the x86 computer boot process and create a minimal bootloader to display "Hello OS!".

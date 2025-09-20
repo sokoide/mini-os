@@ -1,5 +1,11 @@
 # Day 03: VGA Text Display (C Transition + Boot Split) 🎨
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Learning Goals
 
 **Development methodology changes significantly from Day 03.** We transition from the simple assembly file structure of Day 01-02 to full-scale OS development centered on C language.

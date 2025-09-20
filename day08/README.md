@@ -1,5 +1,11 @@
 # Day 08: Context Switch 🔄
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Implement context_switch function in assembly and use TCB's esp to switch thread execution states.

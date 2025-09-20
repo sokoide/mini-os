@@ -1,5 +1,11 @@
 # Day 09: Preemptive Multithreading (Round-Robin) 🔀
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Implement preemptive multithreading using timer interrupts and create a round-robin scheduler that automatically switches threads.
@@ -308,7 +314,8 @@ static inline void serial_puts(const char* s) {
     while (*s) {
         if (*s == '
 ')
-            serial_putc('');
+            serial_putc('
+');
         serial_putc(*s++);
     }
 }

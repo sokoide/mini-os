@@ -1,5 +1,11 @@
 # Day 05: Interrupt Infrastructure ⚙️
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Implement the basics of the x86 interrupt system, build an IDT, and establish an environment that can handle CPU exceptions.
@@ -212,7 +218,7 @@ extern isr_handler_c      ; C-side handler
 isr_common:
   pusha                   ; Save general registers
   cld
-  mov eax, esp            ; Pass ESP: [errcode][vec][pusha...] 
+  mov eax, esp            ; Pass ESP: [errcode][vec][pusha...]
   push eax
   call isr_handler_c
   add esp, 4

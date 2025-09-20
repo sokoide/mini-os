@@ -1,5 +1,11 @@
 # Day 04: Serial Port Debug (freestanding C + Inline Assembly) 🔧
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Build a debug environment using UART serial port and implement a dual output system for VGA and serial.

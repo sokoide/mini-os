@@ -1,5 +1,11 @@
 # Day 10: Sleep/Timing 💤
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 Implement sleep() function using timer interrupts to realize thread blocking and wake-up mechanisms.
 

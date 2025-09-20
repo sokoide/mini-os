@@ -1,5 +1,11 @@
 # day99_completed - Complete Mini OS Implementation
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Overview
 
 This directory contains the complete, production-ready implementation of the Mini OS with all features from the 12-day curriculum plus additional enhancements.
@@ -8,13 +14,13 @@ This directory contains the complete, production-ready implementation of the Min
 
 ### Core OS Components
 - **Boot System**: MBR bootloader with A20 enable and protected mode transition
-- **Memory Management**: GDT setup and flat memory model 
+- **Memory Management**: GDT setup and flat memory model
 - **Interrupt System**: IDT with CPU exceptions and hardware interrupt handling
 - **Timer System**: PIT-based 100Hz timer interrupts for scheduling
 - **Display System**: VGA text mode with color support and cursor control
 - **Debug System**: Serial port output for debugging and logging
 
-### Advanced Features  
+### Advanced Features
 - **Preemptive Multithreading**: Round-robin scheduling with context switching
 - **Thread Management**: Thread creation, scheduling, sleep/wake functionality
 - **Keyboard Input**: PS/2 keyboard driver with scan code translation
@@ -30,7 +36,7 @@ day99_completed/
 ├── src/
 │   ├── kernel/           # Core kernel functionality
 │   │   ├── kernel.c      # Main kernel with threading and scheduling
-│   │   ├── kernel.h      # Kernel function declarations  
+│   │   ├── kernel.h      # Kernel function declarations
 │   │   └── error_types.h # Error code definitions
 │   ├── drivers/          # Device drivers
 │   │   ├── keyboard.c    # PS/2 keyboard driver implementation
@@ -54,7 +60,7 @@ day99_completed/
 
 **Threading System**:
 - Thread Control Blocks (TCB) with 4KB stacks
-- READY, RUNNING, BLOCKED state management  
+- READY, RUNNING, BLOCKED state management
 - Round-robin preemptive scheduling
 - Context switching with full register preservation
 - Sleep/wake functionality with timer-based scheduling
@@ -68,7 +74,7 @@ day99_completed/
 **Memory Layout**:
 - 0x7C00: Boot sector (MBR)
 - 0x100000: Kernel code and data (1MB)
-- 0x200000: Kernel stack (2MB)  
+- 0x200000: Kernel stack (2MB)
 - 0x300000+: Thread stacks and data
 - 0xB8000: VGA text buffer
 
@@ -108,7 +114,7 @@ make test-threads # Test threading system
 - Initial stack setup for new threads
 - Interrupt-safe switching in timer handler
 
-### Thread Scheduling  
+### Thread Scheduling
 - 100Hz timer provides 10ms time slices
 - Round-robin algorithm with READY queue
 - Sleep/wake with tick-based timing
@@ -132,7 +138,7 @@ This complete implementation demonstrates:
 - Real x86 assembly programming techniques
 - Hardware-level system programming
 - Interrupt-driven architecture
-- Multithreading fundamentals  
+- Multithreading fundamentals
 - Device driver development
 - System-level debugging techniques
 

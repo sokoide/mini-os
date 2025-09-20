@@ -1,13 +1,22 @@
 # Day 07: Thread Data Structures (TCB) 🧵
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
+
 Design and implement in C the Thread Control Block (TCB) and READY list that form the foundation of multithreaded OS.
 
 ## Background
+
 While we can now generate timer interrupts in Day 6, OS development requires executing multiple tasks concurrently. Today we'll design TCB data structures for managing thread state and READY lists for managing threads, building the foundation for multithreading. Today focuses on design, with actual context switching implementation in the next session.
 
 ## New Concepts
-- **TCB (Thread Control Block)**: Data structure for storing thread state. Contains information like register values, stack pointer, execution state, priority, etc. One is assigned per thread, manipulated by the scheduler.
+
+-   **TCB (Thread Control Block)**: Data structure for storing thread state. Contains information like register values, stack pointer, execution state, priority, etc. One is assigned per thread, manipulated by the scheduler.
 
 ## Learning Content
 
@@ -18,16 +27,18 @@ While we can now generate timer interrupts in Day 6, OS development requires exe
 -   Thread creation API (template) design
 
 【Note】Minimal TCB set
-- First, align `esp` (stack pointer), `state` (READY/RUNNING/BLOCKED), `next`/`next_ready` (for READY circulation), `next_blocked` (for BLOCKED chain) as minimal configuration.
+
+-   First, align `esp` (stack pointer), `state` (READY/RUNNING/BLOCKED), `next`/`next_ready` (for READY circulation), `next_blocked` (for BLOCKED chain) as minimal configuration.
 
 ## Task List
-- [ ] Define enum types for thread states (READY/RUNNING/BLOCKED) and blocking reasons
-- [ ] Design TCB structure and define fields like stack, state, counters
-- [ ] Define kernel context structure to manage current_thread, ready_thread_list, etc.
-- [ ] Implement circular list operation functions (push_back, pop_front) for READY list
-- [ ] Implement thread creation API (create_thread) for attribute setting and READY insertion
-- [ ] Create demo threads in kmain and confirm READY list initialization
-- [ ] Verify operation in QEMU and display list initialization messages
+
+-   [ ] Define enum types for thread states (READY/RUNNING/BLOCKED) and blocking reasons
+-   [ ] Design TCB structure and define fields like stack, state, counters
+-   [ ] Define kernel context structure to manage current_thread, ready_thread_list, etc.
+-   [ ] Implement circular list operation functions (push_back, pop_front) for READY list
+-   [ ] Implement thread creation API (create_thread) for attribute setting and READY insertion
+-   [ ] Create demo threads in kmain and confirm READY list initialization
+-   [ ] Verify operation in QEMU and display list initialization messages
 
 ## Prerequisites Check
 

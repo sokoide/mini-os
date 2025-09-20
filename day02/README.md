@@ -1,5 +1,11 @@
 # Day 02: Protected Mode Transition ⚡
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Safely transition from 16-bit real mode to 32-bit protected mode and display strings directly to the VGA text buffer.

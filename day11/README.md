@@ -1,5 +1,11 @@
 # Day 11: Keyboard Input System (PS/2 + Ring Buffer) ⌨️
 
+---
+
+🌐 Available languages:
+
+[English](./README.md) | [日本語](./README_ja.md)
+
 ## Today's Goal
 
 Process asynchronous input from PS/2 keyboard and implement ring buffer and blocking I/O.
