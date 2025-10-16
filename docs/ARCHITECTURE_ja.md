@@ -88,7 +88,7 @@ graph TB
 
 | コンポーネント         | 説明                             | 品質改善                   |
 | ---------------------- | -------------------------------- | -------------------------- |
-| **関数分割**           | 13 の単一責任関数                | 保守性向上、可テスト性向上 |
+| **関数分割**           | 56 の単一責任関数                | 保守性向上、可テスト性向上 |
 | **定数管理**           | `boot_constants.inc`集約         | 変更容易性向上             |
 | **エラーハンドリング** | `os_result_t`統一システム        | 一貫性・デバッグ効率向上   |
 | **デバッグ機能**       | 510 行以上の包括的ユーティリティ | 診断能力・開発効率向上     |
@@ -776,7 +776,7 @@ graph TB
 
 ## 🔧 デバッグと品質保証（day99_completed の新機能）
 
-day99_completed では、510 行以上の包括的なデバッグユーティリティを新たに実装しています。
+day99_completed では、包括的なデバッグユーティリティとテストフレームワークを実装しています。
 
 ### 🎯 デバッグユーティリティ機能
 
@@ -807,12 +807,22 @@ graph TB
 | 機能               | 説明                              | 品質向上効果             |
 | ------------------ | --------------------------------- | ------------------------ |
 | **静的解析統合**   | cppcheck + clang 自動実行         | コード品質の自動検証     |
-| **ユニットテスト** | 13 分割関数の個別テスト           | 関数レベルの正確性保証   |
+| **ユニットテスト** | 56 分割関数の個別テスト           | 関数レベルの正確性保証   |
 | **統合テスト**     | QEMU 環境での実ハードウェアテスト | システム全体の安定性確認 |
 | **継続的品質改善** | 91→96 点の実証的向上              | プロダクション品質の実現 |
 
 ### ⚡ デバッグ API の概要
 
+debug_utils.h には以下の機能が実装されています：
+
+- **デバッグログ出力**: レベル別ログ管理（ERROR, WARN, INFO, VERBOSE）
+- **メモリダンプ**: 16進ダンプ、バイナリ表示、メモリ比較
+- **スレッド診断**: 状態分析、スタック使用量、CPU使用率推定
+- **システムメトリクス**: 割り込み統計、コンテキストスイッチ数、スレッド情報
+- **性能プロファイリング**: 関数単位の実行時間測定
+- **ヘルスチェック**: メモリ、スレッド、割り込み、タイミング検証
+
+使用例：
 ```c
 // レベル別ログ出力
 DEBUG_ERROR("重大エラー: %s", message);
@@ -990,7 +1000,7 @@ day99_completed は、教育目的の OS でありながら、プロダクショ
 
 ### 🔧 ソフトウェア工学の実践
 
-6. **関数分割**: 複雑な関数を 13 の単一責任関数に分割
+6. **関数分割**: 複雑な関数を 56 の単一責任関数に分割
 7. **テスト駆動開発**: 分割された全関数の個別テスト実装
 8. **品質保証**: 自動化されたテストスイートによる継続的検証
 9. **保守性向上**: 単一責任原則による高い保守性の実現
@@ -999,7 +1009,7 @@ day99_completed は、教育目的の OS でありながら、プロダクショ
 
 | 改善項目         | 改善前                      | 改善後                       | 効果                     |
 | ---------------- | --------------------------- | ---------------------------- | ------------------------ |
-| **関数分割**     | 大きな複合関数（76 行など） | 13 の単一責任関数            | 保守性・テスト容易性向上 |
+| **関数分割**     | 大きな複合関数（76 行など） | 56 の単一責任関数            | 保守性・テスト容易性向上 |
 | **エラー処理**   | 散発的なエラーハンドリング  | os_result_t 統一システム     | 一貫性・デバッグ効率向上 |
 | **定数管理**     | マジックナンバー散在        | boot_constants.inc 集約      | 変更容易性・可読性向上   |
 | **デバッグ機能** | 基本的な printf             | 包括的 debug_utils（510 行） | 診断能力・開発効率向上   |
@@ -1012,7 +1022,7 @@ day99_completed は、教育目的の OS でありながら、プロダクショ
 graph LR
     subgraph "品質保証システム"
         STATIC[静的解析<br/>cppcheck+clang]
-        UNIT[ユニットテスト<br/>13関数×個別]
+        UNIT[ユニットテスト<br/>56関数×個別]
         INTEGRATION[統合テスト<br/>QEMU実行]
         AUTOMATION[自動化<br/>make test]
     end
@@ -1034,9 +1044,9 @@ graph LR
 
 ## 関数分割アーキテクチャ（単一責任原則の適用）
 
-### 分割された関数群（13 関数）
+### 分割された関数群（56 関数）
 
-OS の保守性とテストの容易性を向上させるため、複数の責任を持つ関数を単一責任の関数に分割しました。
+kernel.c には全56の関数が実装されており、複数の責任を持つ関数を単一責任の関数に分割しています。以下は主要な分割グループです：
 
 #### 1. PIC 関数群（3 関数）
 
@@ -1087,22 +1097,125 @@ void init_interrupts(void) {           // 統合関数
 }
 ```
 
-#### 4. スリープシステム関数群（3 関数）
+#### 4. スリープ・ブロック管理関数群（6 関数）
 
 ```c
-// 元の sleep() を3つの関数に分割
-void remove_from_ready_list(thread_t* thread);           // READYリストから安全に削除
-void insert_into_sleep_list(thread_t* thread, uint32_t wake_up_tick); // 時刻順でスリープリストに挿入
-void transition_to_sleep_state(thread_t* thread, uint32_t wake_up_tick); // スレッド状態とタイミング更新
-
-void sleep(uint32_t ticks) {           // 統合関数
-    uint32_t wakeup_time = system_ticks + ticks;
-    remove_from_ready_list(current_thread);
-    transition_to_sleep_state(current_thread, wakeup_time);
-    insert_into_sleep_list(current_thread, wakeup_time);
-    schedule();
-}
+// スレッドのブロック・スリープ機能を管理する6つの関数
+void remove_from_ready_list(thread_t* thread);            // READYリストから削除
+static void check_and_wake_timer_threads(void);           // タイマー満了スレッド起床
+void block_current_thread(block_reason_t reason, uint32_t data); // スレッドをブロック
+static void unblock_and_requeue_thread(thread_t* thread, thread_t* prev); // ブロック解除
+void unblock_keyboard_threads(void);                      // キーボード待機スレッド起床
+void sleep(uint32_t ticks);                               // スリープシステムコール
 ```
+
+#### 5. スケジューラ・コンテキストスイッチ関数群（5 関数）
+
+```c
+// スケジューリング機能を管理する5つの関数
+static inline void acquire_scheduler_lock(void);          // ロック取得
+static inline void release_scheduler_lock(void);          // ロック解放
+static inline bool is_scheduler_locked(void);             // ロック状態確認
+static void handle_initial_thread_selection(void);        // 初回スレッド選択
+static void perform_thread_switch(void);                  // スレッド切り替え
+static void handle_blocked_thread_scheduling(void);       // ブロック状態切り替え
+void schedule(void);                                       // メインスケジューラ
+```
+
+#### 6. VGA テキストモード表示関数群（10 関数）
+
+```c
+// VGA表示機能を提供する10個の関数
+void vga_init(void);                    // VGA初期化
+void vga_set_color(vga_color_t f, vga_color_t b); // 色設定
+void vga_clear(void);                   // 画面クリア
+void vga_move_cursor(uint16_t x, uint16_t y);    // カーソル移動
+void vga_putc(char c);                  // 1文字出力
+void vga_puts(const char* s);           // 文字列出力
+void vga_putnum(uint32_t n);            // 数値出力
+void clear_screen(void);                // 画面クリア（統合版）
+void clear_line(int row);               // 行クリア
+void print_at(int row, int col, const char* str, uint8_t color); // 位置指定出力
+```
+
+#### 7. シリアルポート・デバッグ出力関数群（6 関数）
+
+```c
+// シリアルとデバッグ出力を提供する6個の関数
+void init_serial(void);                 // シリアルポート初期化
+void serial_write_char(char c);         // 1文字送信
+void serial_write_string(const char* str); // 文字列送信
+void debug_vprint(const char* format, va_list args); // V形式デバッグ出力
+void debug_print(const char* format, ...); // 可変長デバッグ出力
+void display_system_info(void);         // システム情報表示
+```
+
+#### 8. IDT・タイマー・ユーティリティ関数群（4 関数）
+
+```c
+// IDT、タイマー、型変換を提供する4個の関数
+void set_idt_gate(int n, uint32_t handler); // IDTエントリ設定
+void init_timer(uint32_t frequency);    // PITタイマー初期化
+void itoa(uint32_t value, char* buffer, int base); // 整数→文字列変換
+int update_thread_counter(...);         // スレッドカウンター更新
+```
+
+#### 9. カーネル初期化関数群（5 関数）
+
+```c
+// カーネル起動と初期化を担当する5個の関数
+static void init_kernel_context(void);      // コンテキスト初期化
+static void init_basic_systems(void);       // 基本システム初期化
+static void init_interrupt_and_io_systems(void); // 割り込み・I/O初期化
+static void init_thread_system(void);       // スレッドシステム初期化
+static void kernel_main_loop(void);         // メインループ
+void kernel_main(void);                     // カーネルメイン関数
+```
+
+#### 10. アプリケーション層スレッド関数（5 関数）
+
+```c
+// ユーザーアプリケーションレベルのスレッド関数
+void idle_thread(void);                 // アイドルスレッド
+static void threadA(void);              // スレッドA：1.0秒間隔カウンター
+static void threadB(void);              // スレッドB：1.5秒間隔カウンター
+static void threadC(void);              // スレッドC：キーボード入力デモ
+```
+
+#### 11. アクセサ・ユーティリティ関数群（4 関数）
+
+```c
+// カーネル状態へのアクセスを提供する4個の関数
+kernel_context_t* get_kernel_context(void); // コンテキスト取得
+thread_t* get_current_thread(void);         // 現在のスレッド取得
+uint32_t get_system_ticks(void);            // システムティック取得
+```
+
+#### 12. 割り込みハンドラ（1 関数）
+
+```c
+// 割り込み処理を行うC言語ハンドラ関数
+void timer_handler_c(void);             // タイマー割り込みハンドラ（C部分）
+// 注：アセンブリ部分のハンドラは interrupt.s, keyboard.c で実装
+```
+
+### 関数分類サマリー
+
+| カテゴリ | 関数数 | 説明 |
+|---------|--------|------|
+| PIC割り込み制御 | 3 | IRQ再マップ、マスク設定、有効化 |
+| スレッド作成 | 4 | パラメータ検証、スタック初期化、属性設定、リスト追加 |
+| 割り込みシステム | 3 | IDT設定、ハンドラ登録、CPU有効化 |
+| スリープ・ブロック | 6 | ブロック/起床管理、リスト操作 |
+| スケジューラ | 5 | スケジューラロック、スレッド選択、切り替え |
+| VGA表示 | 10 | 初期化、色設定、カーソル、出力機能 |
+| シリアル・デバッグ | 6 | ポート初期化、送信、デバッグ出力 |
+| IDT・タイマー・その他 | 4 | IDT設定、タイマー、型変換、カウンター更新 |
+| カーネル初期化 | 5 | コンテキスト、基本システム、割り込み、スレッド、ループ |
+| アプリケーション層 | 5 | アイドル、スレッドA/B/C |
+| アクセサ・ユーティリティ | 4 | コンテキスト/スレッド/ティック取得 |
+| 割り込みハンドラ | 1 | タイマーハンドラ（C部分） |
+| **合計** | **56** | **単一責任原則に基づく完全な関数分割** |
 
 ### 分割の利点
 
@@ -1129,36 +1242,19 @@ graph TB
 
 ### テストインフラストラクチャ
 
-```mermaid
-graph TB
-    subgraph "テストフレームワーク"
-        TEST_FRAMEWORK[test_framework.c/h<br/>基本テスト機能]
-        MOCK_HARDWARE[mock_hardware.c<br/>I/Oポートシミュレーション]
-        TEST_ENTRY[test_entry.s<br/>テスト用エントリポイント]
-    end
+実装状況: 包括的なテストフレームワークが整備されており、以下の複数のテストモジュールが存在します：
 
-    subgraph "個別関数テスト"
-        TEST_PIC[test_pic.c<br/>PIC関数テスト]
-        TEST_THREAD[test_thread.c<br/>スレッド管理テスト]
-        TEST_INTERRUPT[test_interrupt.c<br/>割り込みシステムテスト]
-        TEST_SLEEP[test_sleep.c<br/>スリープシステムテスト]
-    end
+- **test_framework.c/h**: テスト基盤関数
+- **mock_hardware.c**: ハードウェアシミュレーション
+- **test_entry.s**: テスト用アセンブリエントリ
+- **test_pic.c**: PIC関数テスト
+- **test_thread.c**: スレッド管理テスト
+- **test_interrupt.c**: 割り込みシステムテスト
+- **test_sleep.c**: スリープシステムテスト
+- **test_kernel_*.c**: カーネル個別テスト
+- **compile_test.c**: コンパイルテスト（ホスト環境）
 
-    subgraph "統合テスト"
-        COMPILE_TEST[compile_test.c<br/>コンパイル・実行検証]
-        QEMU_TEST[QEMU統合テスト<br/>実ハードウェア環境]
-    end
-
-    TEST_FRAMEWORK --> TEST_PIC
-    TEST_FRAMEWORK --> TEST_THREAD
-    TEST_FRAMEWORK --> TEST_INTERRUPT
-    TEST_FRAMEWORK --> TEST_SLEEP
-
-    MOCK_HARDWARE --> TEST_PIC
-    MOCK_HARDWARE --> TEST_THREAD
-    MOCK_HARDWARE --> TEST_INTERRUPT
-    MOCK_HARDWARE --> TEST_SLEEP
-```
+これにより、QEMU統合テストと組み合わせて、多層的な品質保証が実現されています。
 
 ### テスト実行コマンド
 
@@ -1318,7 +1414,7 @@ qemu-system-i386 -drive file=os.img,format=raw,if=floppy -boot a -nographic -ser
 
 ### ソフトウェア工学の実践 ⭐
 
-6. **関数分割**: 複雑な関数を 13 の単一責任関数に分割
+6. **関数分割**: 複雑な関数を 56 の単一責任関数に分割
 7. **テスト駆動開発**: 分割された全関数の個別テスト実装
 8. **品質保証**: 自動化されたテストスイートによる継続的検証
 9. **保守性向上**: 単一責任原則による高い保守性の実現
