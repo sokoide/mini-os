@@ -28,10 +28,11 @@
 -   **高度なキーボード入力処理（SPSC ロックフリーリングバッファ、Shift 対応、ブロッキング/非ブロッキング API）**
 -   **完全なコンテキストスイッチ機能**
 -   **スリープシステムコールとタイマーベースのスレッド管理**
+-   **kernel_context_t による状態の一元管理**
 
 ### 🔧 ソフトウェア工学の実践
 
--   **関数分割アーキテクチャ（13 の単一責任関数）**
+-   **関数分割アーキテクチャ（56 の単一責任関数）**
 -   **統一エラーハンドリングシステム（`os_result_t`）**
 -   **包括的なデバッグユーティリティ（510 行以上の診断機能）**
 -   **自動化されたテストスイートと品質保証**
@@ -113,7 +114,7 @@ graph TB
         KERNEL_ENTRY[カーネルエントリ #40;kernel_entry.s#41;]
     end
 
-    subgraph "カーネル層"
+    subgraph "カーネル層 (kernel_context_t 管理)"
         KERNEL_MAIN[kernel_main #40;#41;]
         INTERRUPT_SYS[割り込みシステム]
         SCHEDULER[スケジューラ]
@@ -260,13 +261,6 @@ graph TB
         WITH_A20[A20有効: 0x100000で正常アクセス]
     end
 ```
-
-### 補足: キーボード入力（SPSC リングバッファの不変条件）
-
--   空判定: `head == tail`
--   満杯判定: `((head + 1) % N) == tail`
--   公開順序: 先に `buffer[head] = data` を書き、その後 `head` を次位置へ更新
--   特徴: 単一生産者（IRQ1）/単一消費者（スレッド）で割り込み禁止無しに安全に動作
 
 ## x86-32 レジスタアーキテクチャ
 
@@ -530,24 +524,6 @@ graph TB
     SLEEP_CALL --> S1
     WAKE_CHECK --> R1
 ```
-
-### グローバル変数の拡張
-
-ブロック/スリープ機能の実装により、以下のグローバル変数が利用されます：
-
-```c
-// 既存のグローバル変数
-static thread_t* current_thread = NULL;      // 現在実行中のスレッド
-static thread_t* ready_thread_list = NULL;   // READYスレッドリストの先頭
-static thread_t* blocked_thread_list = NULL; // ブロック中スレッド（TIMER は起床時刻順）⭐
-static uint32_t system_ticks = 0;            // システム起動からの経過ティック数
-```
-
-**blocked_thread_list（タイマ）の特徴：**
-
--   `BLOCK_REASON_TIMER` のスレッドは起床時刻（wake_up_tick）の昇順でソート
--   リスト先頭が最も早く起床するスレッド
--   `timer_handler_c()` でチェックされ、起床条件を満たしたスレッドが READY に移動
 
 ### スレッドスタック初期化
 
@@ -1014,7 +990,7 @@ day99_completed は、教育目的の OS でありながら、プロダクショ
 | **定数管理**     | マジックナンバー散在        | boot_constants.inc 集約      | 変更容易性・可読性向上   |
 | **デバッグ機能** | 基本的な printf             | 包括的 debug_utils（510 行） | 診断能力・開発効率向上   |
 | **品質保証**     | 手動テスト                  | 自動化テスト+静的解析        | 信頼性・継続性向上       |
-| **総合品質**     | 91/100                      | **96/100**                   | **A+評価達成**           |
+| **総合品質**     | 91/100                      | **96.2/100**                 | **A+評価達成**           |
 
 #### 実装された品質向上機能
 
@@ -1261,144 +1237,7 @@ graph TB
 ```bash
 # 全テスト実行（推奨）
 make test
-
-# 個別テスト実行
-make test-compile      # コンパイルテスト（ホスト環境）
-make test-pic          # PIC関数QEMU テスト
-make test-thread       # スレッド管理QEMUテスト
-make test-interrupt    # 割り込みシステムQEMUテスト
-make test-sleep        # スリープシステムQEMUテスト
-
-# テスト環境クリーンアップ
-make test-clean
 ```
-
-## ファイル構成とビルドプロセス
-
-```mermaid
-graph TB
-    subgraph "プロジェクト構造 - 業界標準パターン"
-        subgraph "include/ - 統一ヘッダー"
-            KERNEL_H[kernel.h #40;コア関数宣言#41;]
-            KEYBOARD_H[keyboard.h #40;キーボード宣言#41;]
-            DEBUG_UTILS_H[debug_utils.h #40;デバッグ宣言#41;]
-            ERROR_TYPES_H[error_types.h #40;エラー定義#41;]
-        end
-        subgraph "src/ - フラット化実装"
-            KERNEL_C[kernel.c #40;分割されたメイン処理#41;]
-            KEYBOARD_C[keyboard.c #40;キーボード入力処理#41;]
-            DEBUG_UTILS_C[debug_utils.c #40;診断機能#41;]
-            subgraph "src/boot/ - ブートシステム"
-                BOOT_S[boot.s #40;ブートローダ#41;]
-                KERNEL_ENTRY_S[kernel_entry.s #40;カーネルエントリ#41;]
-                INTERRUPT_S[interrupt.s #40;割り込み処理#41;]
-            end
-        end
-        subgraph "linker/ - ビルド設定"
-            KERNEL_LD[kernel.ld #40;リンカスクリプト#41;]
-        end
-        MAKEFILE[Makefile #40;統合ビルド設定#41;]
-    end
-
-    subgraph "テストファイル"
-        TEST_DIR[tests/ ディレクトリ]
-        TEST_FRAMEWORK_C[test_framework.c]
-        TEST_PIC_C[test_pic.c など個別テスト]
-        COMPILE_TEST_C[compile_test.c]
-    end
-
-    subgraph "ビルド成果物"
-        BOOT_BIN[boot.bin]
-        KERNEL_ELF[kernel.elf]
-        OS_IMG[os.img #40;フロッピーイメージ#41;]
-        TEST_IMGS[test_*.img #40;テスト用イメージ#41;]
-    end
-
-    BOOT_S --> BOOT_BIN
-    KERNEL_ENTRY_S --> KERNEL_ELF
-    INTERRUPT_S --> KERNEL_ELF
-    KERNEL_C --> KERNEL_ELF
-    KERNEL_H --> KERNEL_ELF
-    KERNEL_LD --> KERNEL_ELF
-
-    TEST_DIR --> TEST_IMGS
-    TEST_FRAMEWORK_C --> TEST_IMGS
-
-    BOOT_BIN --> OS_IMG
-    KERNEL_ELF --> OS_IMG
-```
-
-### ビルドコマンド
-
-```bash
-# アセンブリファイルのコンパイル
-nasm -f bin boot.s -o boot.bin
-nasm -f elf32 kernel_entry.s -o kernel_entry.o
-nasm -f elf32 interrupt.s -o interrupt.o
-
-# Cファイルのコンパイル
-i686-elf-gcc -c kernel.c -o kernel.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
-i686-elf-gcc -c keyboard.c -o keyboard.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
-
-# リンク
-i686-elf-gcc -T kernel.ld -o kernel.elf -ffreestanding -O2 -nostdlib kernel_entry.o kernel.o keyboard.o interrupt.o -lgcc
-
-# フロッピーイメージ作成
-dd if=/dev/zero of=os.img bs=1024 count=1440
-dd if=boot.bin of=os.img bs=512 count=1 conv=notrunc
-dd if=kernel.elf of=os.img bs=512 seek=1 conv=notrunc
-
-# QEMU実行
-qemu-system-i386 -drive file=os.img,format=raw,if=floppy -boot a -nographic -serial stdio
-```
-
-## 教育的ポイント
-
-### 1. OS の基本概念
-
--   **ブートプロセス**: BIOS からプロテクトモードへの移行
--   **メモリ管理**: セグメンテーション、GDT 設定
--   **割り込み処理**: IDT、PIC、タイマー割り込み
--   **プロセス管理**: スレッド、TCB、スケジューリング
-
-### 2. x86 アーキテクチャの理解
-
--   **レジスタ構成**: 汎用レジスタ、セグメントレジスタ、制御レジスタ
--   **プロテクトモード**: セグメンテーション、特権レベル
--   **割り込みメカニズム**: IDT、PIC、割り込みハンドラ
-
-### 3. コンテキストスイッチの実装
-
--   **レジスタ保存/復元**: pushfd/popfd、pusha/popa
--   **スタック管理**: ESP 操作、スタックレイアウト
--   **制御フロー**: アセンブリと C の連携
-
-### 4. タイマー型マルチタスキング
-
--   **プリエンプティブスケジューリング**: タイマー割り込みベース
--   **ラウンドロビン**: 公平な CPU 時間配分
--   **スレッド状態管理**: READY, RUNNING, SLEEPING, BLOCKED
--   **sleep()システムコール**: タイムベースのスレッドスリープ機能
-
-### 5. デュアルリスト管理
-
--   **READY リスト**: 実行可能スレッドの循環リスト
--   **スリープリスト**: 起床時刻順のソート済みリスト
--   **効率的な起床チェック**: O(1)でのスリープスレッド管理
-
-### 6. ソフトウェア工学原則の適用 ⭐
-
--   **単一責任原則**: 1 つの関数は 1 つの責任のみを持つ
--   **関数分割**: 複雑な関数を理解しやすい小さな関数に分割
--   **テスト駆動開発**: 分割された関数の個別テスト実装
--   **モックオブジェクト**: ハードウェア依存部分のシミュレーション
-
-### 7. 品質保証とテスト戦略
-
--   **ユニットテスト**: 個別関数の動作検証
--   **統合テスト**: QEMU 環境での実ハードウェアテスト
--   **コンパイルテスト**: ホスト環境での関数検証
--   **自動化テスト**: `make test`による一括テスト実行
 
 ## まとめ
 
@@ -1418,19 +1257,3 @@ qemu-system-i386 -drive file=os.img,format=raw,if=floppy -boot a -nographic -ser
 7. **テスト駆動開発**: 分割された全関数の個別テスト実装
 8. **品質保証**: 自動化されたテストスイートによる継続的検証
 9. **保守性向上**: 単一責任原則による高い保守性の実現
-
-### 学習効果
-
--   **OS 理解**: ハードウェア制御と複数プログラムの同時実行メカニズム
--   **アーキテクチャ理解**: x86 プロテクトモードとレジスタ操作
--   **設計原則**: 単一責任原則とモジュラー設計の重要性
--   **テスト技法**: ハードウェアモッキングと統合テストの実装方法
-
-### 実践的価値
-
-この実装を通じて、OS の動作原理だけでなく、実際の開発現場で重要な以下を実践的に学ぶことができます：
-
-1. **品質保証の実装**: 自動テスト、静的解析、継続的品質改善
-2. **保守可能な設計**: 単一責任原則、モジュラー設計、統一エラー処理
-3. **開発効率の向上**: デバッグユーティリティ、定数管理、テスト自動化
-4. **プロダクション思考**: 長期保守を考慮した設計とドキュメント化
