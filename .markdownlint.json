@@ -1,0 +1,20 @@
+{
+  // MD013/line-length: 行の長さの制限を無効化（日本語やテーブル、ASCII アートで長くなるため）
+  "MD013": false,
+  // MD024/no-duplicate-heading: 同一内容の見出しを許可（複数の Day で同じ見出しを使う場合があるため）
+  "MD024": false,
+  // MD033/no-inline-html: インライン HTML を許可（<br> や <details> などで使用するため）
+  "MD033": false,
+  // MD036/no-emphasis-as-heading: 強調文の見出し利用を許可（ラベル的な太字を使うため）
+  "MD036": false,
+  // MD040/fenced-code-language: コードブロックの言語指定を必須にしない（メモリマップ・ASCII 図など言語なしブロックがあるため）
+  "MD040": false,
+  // MD041/first-line-heading: ファイルの1行目を見出しに限定しない（バッジやメタデータが先行する場合があるため）
+  "MD041": false,
+  // MD051/link-fragments: リンク先アンカー検証を無効化（emoji/CJK 見出しのフラグメントを誤検知するため）
+  "MD051": false,
+  // MD010/no-hard-tabs: コードブロック内でのタブ利用を許可（アセンブリ等で必要なため）
+  "MD010": {
+    "code_blocks": false
+  }
+}

@@ -4,8 +4,8 @@
 
 ## 📚 正本（まずここを読む）
 
-| ドキュメント | 内容 |
-|---|---|
+| ドキュメント                                 | 内容                                                                                                                                                 |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [**ARCHITECTURE_ja.md**](ARCHITECTURE_ja.md) | **公式アーキテクチャ正本**。完成形（`day12_completed/`）の設計・内部構造・動作原理を網羅。システム全体を理解したい場合は本ファイルを読んでください。 |
 
 ## 📎 参考資料（`reference/`）
@@ -14,17 +14,17 @@
 
 ### アーキテクチャ解説（モデル比較）
 
-| ファイル | 生成元 | 特徴 |
-|---|---|---|
-| [reference/arch_codex_ja.md](reference/arch_codex_ja.md) | Codex | コードを軸に「どのファイルがどの関心事か」を俯瞰する紙芝居形式 |
-| [reference/arch_gemini_ja.md](reference/arch_gemini_ja.md) | Gemini | メンテナ向けの詳細設計解説 |
-| [reference/arch_glm_ja.md](reference/arch_glm_ja.md) | GLM | Mermaid チャートを多用した視覚的解説 |
+| ファイル                                                   | 生成元 | 特徴                                                           |
+| ---------------------------------------------------------- | ------ | -------------------------------------------------------------- |
+| [reference/arch_codex_ja.md](reference/arch_codex_ja.md)   | Codex  | コードを軸に「どのファイルがどの関心事か」を俯瞰する紙芝居形式 |
+| [reference/arch_gemini_ja.md](reference/arch_gemini_ja.md) | Gemini | メンテナ向けの詳細設計解説                                     |
+| [reference/arch_glm_ja.md](reference/arch_glm_ja.md)       | GLM    | Mermaid チャートを多用した視覚的解説                           |
 
 ### 品質分析レポート
 
-| ファイル | 生成元 | 特徴 |
-|---|---|---|
-| [reference/QUALITY_ja.md](reference/QUALITY_ja.md) | Gemini | 最新コードベースの品質評価 |
+| ファイル                                                         | 生成元 | 特徴                             |
+| ---------------------------------------------------------------- | ------ | -------------------------------- |
+| [reference/QUALITY_ja.md](reference/QUALITY_ja.md)               | Gemini | 最新コードベースの品質評価       |
 | [reference/quality_gemini_ja.md](reference/quality_gemini_ja.md) | Gemini | デザイン原則（SRP 等）観点の分析 |
 
 ---

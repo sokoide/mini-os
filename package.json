@@ -1,0 +1,12 @@
+{
+  "name": "mini-os",
+  "version": "1.0.0",
+  "private": true,
+  "description": "12-day educational x86 OS development curriculum",
+  "devDependencies": {
+    "markdownlint-cli": "^0.43.0",
+    "prettier": "^3.8.3",
+    "textlint": "^14.0.0",
+    "textlint-rule-preset-ja-spacing": "^2.4.0"
+  }
+}

@@ -1,50 +1,55 @@
 # Day 08: スレッドデータ構造（TCB）🧵
 
 ## 本日のゴール
-マルチスレッドOSの基礎となるスレッド制御ブロック（TCB）とREADYリストをCで設計・実装する。
+
+マルチスレッド OS の基礎となるスレッド制御ブロック（TCB）と READY リストを C で設計・実装する。
 
 ## SWE 向けモチベーション
 
 プロセスやスレッドは物理的には「レジスタとスタックの束」に過ぎません。それを「実行の単位」として抽象するのが TCB（Thread Control Block）です。`ps` や `top` で見るリスト、Go の goroutine、async タスクの裏側はすべてこの抽象化です。この日は OS 最大の抽象化である「スレッド」を設計します。
 
 ## 背景
-Day 07 でタイマー割り込みを生成できるようになったが、OS開発では複数のタスクを並行して実行する必要がある。本日はスレッドの状態を管理するためのTCBデータ構造と、スレッドを管理するためのREADYリストを設計し、マルチスレッドの基盤を構築する。今日は設計が主眼で、次回で実際のコンテキストスイッチを実装する。
+
+Day 07 でタイマー割り込みを生成できるようになったが、OS 開発では複数のタスクを並行して実行する必要がある。本日はスレッドの状態を管理するための TCB データ構造と、スレッドを管理するための READY リストを設計し、マルチスレッドの基盤を構築する。今日は設計が主眼で、次回で実際のコンテキストスイッチを実装する。
 
 ## 新しい概念
-- **TCB (Thread Control Block)**: スレッドの状態を保存するためのデータ構造。レジスタ値、スタックポインタ、実行状態、優先度などの情報を含む。各スレッドに1つずつ割り当てられ、スケジューラがこれを操作。
+
+- **TCB (Thread Control Block)**: スレッドの状態を保存するためのデータ構造。レジスタ値、スタックポインタ、実行状態、優先度などの情報を含む。各スレッドに 1 つずつ割り当てられ、スケジューラがこれを操作。
 
 ## 学習内容
 
--   スレッド状態（READY/RUNNING/BLOCKED）とブロック理由
--   スレッド制御ブロック（TCB: Thread Control Block）の設計
--   スタック領域の確保と初期化設計（実装は次回のコンテキスト切替で活用）
--   READY リスト（循環リスト）管理の基本関数
--   スレッド生成 API（雛形）設計
+- スレッド状態（READY/RUNNING/BLOCKED）とブロック理由
+- スレッド制御ブロック（TCB: Thread Control Block）の設計
+- スタック領域の確保と初期化設計（実装は次回のコンテキスト切替で活用）
+- READY リスト（循環リスト）管理の基本関数
+- スレッド生成 API（雛形）設計
 
 【メモ】TCB の最小セット
-- まずは `esp`（スタックポインタ）, `state`（READY/RUNNING/BLOCKED）, `next`/`next_ready`（READY循環用）, `next_blocked`（BLOCKED直鎖用）を揃えるのが最小構成です。
+
+- まずは `esp`（スタックポインタ）, `state`（READY/RUNNING/BLOCKED）, `next`/`next_ready`（READY 循環用）, `next_blocked`（BLOCKED 直鎖用）を揃えるのが最小構成です。
 
 ## タスクリスト
+
 - [ ] スレッド状態（READY/RUNNING/BLOCKED）とブロック理由の列挙型を定義する
-- [ ] TCB構造体を設計し、スタック、状態、カウンタなどのフィールドを定義する
-- [ ] カーネルコンテキスト構造体を定義し、current_thread、ready_thread_listなどを管理する
-- [ ] READYリストの循環リスト操作関数（push_back、pop_front）を実装する
-- [ ] スレッド生成API（create_thread）を実装し、属性設定とREADY投入を行う
-- [ ] kmainでデモスレッドを作成し、READYリストの初期化を確認する
-- [ ] QEMUで動作確認し、リスト初期化のメッセージを表示する
+- [ ] TCB 構造体を設計し、スタック、状態、カウンタなどのフィールドを定義する
+- [ ] カーネルコンテキスト構造体を定義し、current_thread、ready_thread_list などを管理する
+- [ ] READY リストの循環リスト操作関数（push_back、pop_front）を実装する
+- [ ] スレッド生成 API（create_thread）を実装し、属性設定と READY 投入を行う
+- [ ] kmain でデモスレッドを作成し、READY リストの初期化を確認する
+- [ ] QEMU で動作確認し、リスト初期化のメッセージを表示する
 
 ## 前提知識の確認
 
 ### 必要な知識
 
--   Day 01〜06（ブート、GDT、VGA、IDT/例外、タイマ IRQ）
--   C の構造体、列挙型、ポインタの基礎
+- Day 01〜06（ブート、GDT、VGA、IDT/例外、タイマ IRQ）
+- C の構造体、列挙型、ポインタの基礎
 
 ### 今日新しく学ぶこと
 
--   TCB の安全なレイアウト（スタックを先頭に置く理由）
--   循環単方向リストによる READY キュー
--   スレッドの属性（表示行、カウンタ、遅延など）
+- TCB の安全なレイアウト（スタックを先頭に置く理由）
+- 循環単方向リストによる READY キュー
+- スレッドの属性（表示行、カウンタ、遅延など）
 
 ## 進め方と構成
 
@@ -251,43 +256,43 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 08: TCB/READYリスト ビルド完了"
-	@echo "🚀 make run で起動"
+ @echo "✅ Day 08: TCB/READYリスト ビルド完了"
+ @echo "🚀 make run で起動"
 
 $(BOOTBIN): $(BOOT)
-	$(AS) -f bin $(BOOT) -o $(BOOTBIN)
+ $(AS) -f bin $(BOOT) -o $(BOOTBIN)
 
 kernel_entry.o: $(ENTRY)
-	$(AS) -f elf32 $(ENTRY) -o $@
+ $(AS) -f elf32 $(ENTRY) -o $@
 
 kernel.o: $(KERNELC) vga.h io.h
-	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
+ $(CC) $(CFLAGS) -c $(KERNELC) -o $@
 
 $(KELF): kernel_entry.o kernel.o
-	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o kernel.o
+ $(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o kernel.o
 
 $(KBIN): $(KELF)
-	$(OBJCOPY) -O binary $(KELF) $(KBIN)
+ $(OBJCOPY) -O binary $(KELF) $(KBIN)
 
 $(OS_IMG): $(BOOTBIN) $(KBIN)
-	cat $(BOOTBIN) $(KBIN) > $(OS_IMG)
+ cat $(BOOTBIN) $(KBIN) > $(OS_IMG)
 
 run: $(OS_IMG)
-	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
+ $(QEMU) -fda $(OS_IMG) -boot a -serial stdio
 
 clean:
-	rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
+ rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
 
 .PHONY: all run clean
 ```
 
 ## トラブルシューティング
 
--   READY リストが空のまま
-    -   `create_thread` の戻り値や `ready_list_push_back` のロジックを確認
-    -   `MAX_THREADS` 超過や `func==NULL` などのバリデーション
--   表示が出ない
-    -   Day 03〜06 の初期化手順（boot/、VGA 初期化）を確認
+- READY リストが空のまま
+  - `create_thread` の戻り値や `ready_list_push_back` のロジックを確認
+  - `MAX_THREADS` 超過や `func==NULL` などのバリデーション
+- 表示が出ない
+  - Day 03〜06 の初期化手順（boot/、VGA 初期化）を確認
 
 ## 理解度チェック
 
@@ -298,8 +303,8 @@ clean:
 
 ## 次のステップ
 
--   ✅ TCB（スレッド制御ブロック）の設計
--   ✅ READY リストの基本操作
--   ✅ スレッド生成 API の雛形
+- ✅ TCB（スレッド制御ブロック）の設計
+- ✅ READY リストの基本操作
+- ✅ スレッド生成 API の雛形
 
 Day 08 ではコンテキストスイッチ（アセンブリ）を実装し、TCB の `esp` と初期スタックを活用して実際にスレッドを切り替えます。
