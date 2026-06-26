@@ -36,5 +36,24 @@ asmformat:
 
 # @find . -name "*.s" | xargs asmfmt -w
 
+# --- Markdown formatting (prettier + markdownlint + textlint) ---
+# requires Node tooling: npx が各ツールを初回実行時に取得する。
+# pnpm があれば優先して使う（../workshop/Makefile と同じ方針）。
+PRETTIER_IGNORED := node_modules .git
+RUNNER := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm dlx" || echo "npx")
+EXEC   := $(shell command -v pnpm >/dev/null 2>&1 && echo "pnpm exec" || echo "npx")
+MD_IGNORE_PATHS := $(foreach dir,$(PRETTIER_IGNORED),! -path "./$(dir)/*")
+
+# format は .c/.h 用のため、Markdown は mdformat で分離
+mdformat:
+	@echo "Formatting markdown tables with prettier..."
+	@find . -name "*.md" ! -name "CLAUDE.md" $(MD_IGNORE_PATHS) \
+	  -exec $(EXEC) prettier --write --parser markdown {} + 2>&1 \
+	  | grep -v "^$$" | grep -v "(unchanged)" || true
+	@echo "Linting markdown files..."
+	$(RUNNER) markdownlint-cli "**/*.md" $(foreach dir,$(PRETTIER_IGNORED),--ignore "$(dir)/**") --ignore "CLAUDE.md" --fix
+	$(EXEC) textlint --fix "**/*.md"
+	@echo "Markdown formatting complete."
+
 # cleanというファイルが万が一あってもコマンドが実行されるようにするおまじない
-.PHONY: clean make format asmformat
+.PHONY: clean make format asmformat mdformat
