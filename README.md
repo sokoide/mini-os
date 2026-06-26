@@ -41,6 +41,25 @@
 -   現代 OS の基盤となるモード
 -   GDT (Global Descriptor Table)によるセグメント管理
 
+**Long Mode (ロングモード / 64-bit)**:
+
+-   64-bit 環境（x86_64 / AMD64）。64GB どころか 2⁴⁸（=256TB）の仮想アドレス空間
+-   レジスタが 32-bit（EAX 等）から 64-bit（RAX 等）に拡張され、汎用レジスタも 8 本→16 本（R8-R15 追加）に増加
+-   64-bit OS（Linux/Windows/macOS）が動作するモード
+-   **直接 Real Mode からは飛べない**。必ず Protected Mode を経由する
+
+**x64 への移行手順 (Long Mode への切替)**:
+
+Real Mode → Protected Mode までの処理（A20 ライン有効化・GDT 設定）は、このプロジェクトのブートローダで実装済み。そこから 64-bit モードへ切り替えるには、**ページング必須**というProtected Mode との最大の違いがある。以下の順序で遷移する。
+
+1.  **PAE の有効化**: `CR4` レジスタの PAE ビット（bit 5）を立てる。64-bit ページテーブル（4 レベル）を使うために必要
+2.  **ページテーブル構築**: PML4 → PDPT → PD の少なくとも 3 階層を作成し、最上位（PML4）のアドレスを `CR3` に書き込む
+3.  **EFER.LME のセット**: `IA32_EFER` MSR（モデル固有レジスタ）の LME ビット（bit 8）を立ててロングモードを「予約」する。この時点ではまだ 32-bit のまま
+4.  **ページング有効化**: `CR0` の PG ビット（bit 31）を立てると、手順 3 の予約が発動してロングモードに移行。ただしこの直後は 64-bit 命令を使えない **Compatibility Mode**（32-bit 互換サブモード）に留まる
+5.  **64-bit へのファージャンプ**: 64-bit コードセグメントを含む GDT を読み込み、`ljmp $0x20, $long_mode_entry` のように 64-bit セグメントセレクタでファージャンプ。ここで初めて本当の **64-bit Mode** に入り、RAX/R8 〜 R15 が使えるようになる
+
+> **要点**: Real Mode (16-bit) → Protected Mode (32-bit) → Long Mode (64-bit) と段階的に遷移する。各ステップで「元のモードに戻れない」ことはなく、復帰は理論上可能だが実用上は一方通行。本プロジェクトは 32-bit で完結するため、手順 1 〜 5 は 64-bit 移行を学ぶ次のステップ（README の Next Step 参照）となる。
+
 ### ハードウェアコンポーネント
 
 **PIC (Programmable Interrupt Controller) - 8259A**:
