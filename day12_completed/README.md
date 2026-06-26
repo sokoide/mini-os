@@ -1,6 +1,6 @@
 # Mini OS - 教育用マルチスレッドオペレーティングシステム
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](Makefile) [![Quality Score](https://img.shields.io/badge/quality-98%2F100-brightgreen.svg)](docs/QUALITY_claude_ja.md) [![Documentation](https://img.shields.io/badge/docs-Japanese-blue.svg)](docs/) [![Architecture](https://img.shields.io/badge/arch-x86--32bit-orange.svg)](#アーキテクチャ概要)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](Makefile) [![Quality Score](https://img.shields.io/badge/quality-98%2F100-brightgreen.svg)](../docs/reference/QUALITY_ja.md) [![Documentation](https://img.shields.io/badge/docs-Japanese-blue.svg)](docs/) [![Architecture](https://img.shields.io/badge/arch-x86--32bit-orange.svg)](#アーキテクチャ概要)
 
 > **x86 32 ビットアーキテクチャ上で動作する高品質な教育用マルチスレッドオペレーティングシステム**
 >
@@ -43,7 +43,7 @@
     -   `void read_line(char* buffer, int max_length)` - 文字列入力（scanf("%s")相当）
     -   **Backspace 対応** - 文字列入力中の編集機能
 
-参考: 詳細は [docs/ARCHITECTURE_ja.md](docs/ARCHITECTURE_ja.md) の「補足: キーボード入力（SPSC リングバッファの不変条件）」参照。
+参考: 詳細は [../docs/ARCHITECTURE_ja.md](../docs/ARCHITECTURE_ja.md) の「補足: キーボード入力（SPSC リングバッファの不変条件）」参照。
 
 ### 🛡️ セキュリティ・安全性
 
@@ -322,10 +322,6 @@ mini-os/                        # 🆕 業界標準ディレクトリ構造
 │   ├── test_framework.c       # テストフレームワーク
 │   ├── test_kernel_*.c        # カーネルテスト
 │   └── test_*.c               # コンポーネントテスト
-├── 📁 docs/                   # ドキュメント
-│   ├── ARCHITECTURE_jp.md     # アーキテクチャ解説
-│   ├── QUALITY_claude_ja.md   # 品質分析
-│   └── API_REFERENCE_ja.md    # API リファレンス
 ├── 📄 Makefile                # 統合ビルドシステム
 ├── 📄 README.md               # このファイル
 ├── 📄 CLAUDE.md               # Claude Code 指示
@@ -585,7 +581,7 @@ Magic Number:   <1% 残存（目標: 0%）
 
 #### 🔰 初心者向け学習パス
 
-1.  **OS 基礎概念理解** → [ARCHITECTURE_claude_ja.md](docs/ARCHITECTURE_claude_ja.md)
+1.  **OS 基礎概念理解** → [ARCHITECTURE_ja.md](../docs/ARCHITECTURE_ja.md)
 2.  **ブートプロセス理解** → [boot.s](boot.s) + 詳細解説
 3.  **割り込み処理理解** → [interrupt.s](interrupt.s) + 実行確認
 4.  **スレッド管理理解** → [kernel.c](kernel.c) スレッド関数群
@@ -603,9 +599,8 @@ Magic Number:   <1% 残存（目標: 0%）
 
 | 文書名                                                      | 内容             | 対象者   |
 | ----------------------------------------------------------- | ---------------- | -------- |
-| [ARCHITECTURE_claude_ja.md](docs/ARCHITECTURE_claude_ja.md) | システム設計詳細 | 全レベル |
-| [QUALITY_claude_ja.md](docs/QUALITY_claude_ja.md)           | コード品質分析   | 中級以上 |
-| [API_REFERENCE_ja.md](docs/API_REFERENCE_ja.md)             | 関数リファレンス | 全レベル |
+| [ARCHITECTURE_ja.md](../docs/ARCHITECTURE_ja.md) | システム設計詳細・関数リファレンス | 全レベル   |
+| [QUALITY_ja.md](../docs/reference/QUALITY_ja.md) | コード品質分析                       | 中級以上 |
 
 ### 🛠️ 実習環境セットアップ
 
@@ -631,9 +626,8 @@ make check-env && make run
 
 ## 📚 ドキュメント
 
--   アーキテクチャ詳細（日本語）: docs/ARCHITECTURE_ja.md
--   スケジューラ/割り込みポリシ: docs/SCHEDULER_POLICY_ja.md
--   品質レポート: docs/QUALITY_gpt_ja.md / docs/QUALITY_claude_ja.md
+-   アーキテクチャ詳細・スケジューラポリシ（日本語）: ../docs/ARCHITECTURE_ja.md
+-   品質レポート: ../docs/reference/QUALITY_ja.md
 
 ## 🤝 コントリビューション
 
