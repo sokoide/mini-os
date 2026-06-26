@@ -1,13 +1,13 @@
-; Day 04 完成版 - ブートローダ（16ビット）: A20, GDT（本ファイル内定義）, カーネル読込, プロテクトモード移行
+; Day 04 完成版 - ブートローダ（16ビット）: A20, GDT（同ファイル内定義）, カーネル読込, プロテクトモード移行
 ; 512バイトのブートセクタ + シグネチャを生成
 
 [org  0x7C00]
 [bits 16]
 
-%define KERNEL_LOAD_SEG  0x1000; 0x1000:0000 => 0x00010000（読み込み先）
+%define KERNEL_LOAD_SEG  0x1000; 0x1000:0000 => 0x00010000（読み込み先セグメント:オフセット）
 %define KERNEL_LOAD_OFF  0x0000
 %define KERNEL_LOAD_LIN  0x00010000; プロテクトモードでのジャンプ先（リンク時アドレス）
-%define KERNEL_SECTORS   127
+%define KERNEL_SECTORS   127; 読み込むセクタ数（LBA1=CHS:C0, H0, S2 から）
 
 start:
 	cli
@@ -36,7 +36,7 @@ start:
 	mov ah, 0x02; セクタ読み込み
 	mov al, KERNEL_SECTORS
 	mov ch, 0x00; シリンダ 0
-	mov cl, 0x02; セクタ 2（LBA1）
+	mov cl, 0x02; セクタ 2
 	mov dh, 0x00; ヘッド 0
 	mov dl, [boot_drive]; BIOS のドライブ番号
 	int 0x13
@@ -50,7 +50,7 @@ start:
 
 .read_ok:
 
-	;    GDT をロード（本ファイル内定義）
+	;    GDT をロード
 	lgdt [gdt_descriptor]
 
 	;   プロテクトモードへ移行
@@ -58,13 +58,13 @@ start:
 	or  eax, 1
 	mov cr0, eax
 
-	;   32ビットオフセット指定のファージャンプで kernel_entry へ
+	;   カーネルエントリへファージャンプ（32ビットオフセット指定）
 	jmp dword 0x08:KERNEL_LOAD_LIN
 
 	; ---------------- データ ----------------
 	boot_drive db 0
 
-	;     ---------------- GDT（本ファイル内） ----------------
+	;     ---------------- GDT（同ファイル内） ----------------
 	align 8
 
 gdt_start:

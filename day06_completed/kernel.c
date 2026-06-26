@@ -1,5 +1,4 @@
-// Day 06 完成版 - kernel.c（CでPIC再マッピング + PIT初期化 + IDT/IRQ0 +
-// VGA表示）
+// Day 06 完成版 - kernel.c（CでIDT + 例外ハンドラ + VGA表示）
 #include <stdint.h>
 
 #include "io.h"
@@ -103,75 +102,21 @@ static void load_idt(void) {
     lidt(&idtr);
 }
 
-// ----- 例外/IRQ スタブ宣言（interrupt.s） -----
+// ----- ISR スタブ宣言（interrupt.s） -----
 extern void isr0(void);
 extern void isr3(void);
 extern void isr6(void);
 extern void isr13(void);
 extern void isr14(void);
-extern void irq0(void);
 
-// ----- PIC（8259A） -----
-#define PIC1_CMD 0x20
-#define PIC1_DATA 0x21
-#define PIC2_CMD 0xA0
-#define PIC2_DATA 0xA1
-#define PIC_EOI 0x20
-
-static void remap_pic(void) {
-    uint8_t a1 = inb(PIC1_DATA);
-    uint8_t a2 = inb(PIC2_DATA);
-    outb(PIC1_CMD, 0x11);  // ICW1
-    outb(PIC2_CMD, 0x11);
-    outb(PIC1_DATA, 0x20);  // ICW2 マスタ 0x20
-    outb(PIC2_DATA, 0x28);  // ICW2 スレーブ 0x28
-    outb(PIC1_DATA, 0x04);  // ICW3 マスタ: IRQ2にスレーブ
-    outb(PIC2_DATA, 0x02);  // ICW3 スレーブID=2
-    outb(PIC1_DATA, 0x01);  // ICW4 8086
-    outb(PIC2_DATA, 0x01);
-    outb(PIC1_DATA, a1);  // マスク復元
-    outb(PIC2_DATA, a2);
-}
-static void set_irq_masks(uint8_t m, uint8_t s) {
-    outb(PIC1_DATA, m);
-    outb(PIC2_DATA, s);
-}
-static inline void send_eoi_master(void) {
-    outb(PIC1_CMD, PIC_EOI);
-}
-
-// ----- PIT（8254） -----
-#define PIT_CH0 0x40
-#define PIT_CMD 0x43
-static void init_pit_100hz(void) {
-    uint16_t div = 11932;  // 100Hz 近似
-    outb(PIT_CMD, 0x36);   // ch0, lo/hi, mode3
-    outb(PIT_CH0, div & 0xFF);
-    outb(PIT_CH0, (div >> 8) & 0xFF);
-}
-
-// ----- 共通ハンドラ -----
+// ----- C側 ハンドラ -----
 struct isr_stack {
-    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;
-    uint32_t int_no;
-    uint32_t err_code;
+    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax;  // pusha 順
+    uint32_t int_no;                                        // ベクタ番号
+    uint32_t err_code;  // エラーコード（無い場合は0）
 };
-static volatile uint32_t tick = 0;
-
-static void irq_handler_timer(void) {
-    tick++;
-    if ((tick % 100) == 0) {
-        vga_puts(".");
-    }
-    send_eoi_master();
-}
 
 void isr_handler_c(struct isr_stack* f) {
-    if (f->int_no == 32) {
-        irq_handler_timer();
-        return;
-    }
-    // 例外（参考表示）
     vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
     vga_puts("[EXCEPTION] vec=");
     int n = (int)f->int_no;
@@ -188,30 +133,23 @@ void isr_handler_c(struct isr_stack* f) {
     vga_puts("\n");
 }
 
-static void idt_init_with_timer(void) {
+static void init_idt_and_exceptions(void) {
     for (int i = 0; i < IDT_SIZE; i++) set_idt_gate(i, 0);
     set_idt_gate(0, (uint32_t)isr0);
     set_idt_gate(3, (uint32_t)isr3);
     set_idt_gate(6, (uint32_t)isr6);
     set_idt_gate(13, (uint32_t)isr13);
     set_idt_gate(14, (uint32_t)isr14);
-    set_idt_gate(32, (uint32_t)irq0);  // IRQ0: タイマ
     load_idt();
 }
 
 // ----- エントリ -----
 void kmain(void) {
     vga_init();
-    vga_puts("Day 06: Timer IRQ (100Hz)\n");
+    vga_puts("Day 06: IDT & Exceptions\n");
+    init_idt_and_exceptions();
 
-    remap_pic();
-    set_irq_masks(0xFE, 0xFF);  // IRQ0のみ許可
-    idt_init_with_timer();
-    init_pit_100hz();
-
-    __asm__ volatile("sti");  // CPU割り込み許可
-
-    for (;;) {
-        __asm__ volatile("hlt");
-    }
+    __asm__ volatile("int $0x03");  // ブレークポイント割り込み
+    // ゼロ除算テスト: 下行をコメント解除
+    // volatile int x=1, y=0; volatile int z = x / y; (void)z;
 }

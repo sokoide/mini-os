@@ -1,326 +1,485 @@
-# Day 06: Timer Interrupts (PIC/PIT) ⏱️
+# Day 06: 割り込みインフラストラクチャ ⚙️
 
----
+## 本日のゴール
 
-🌐 Available languages:
+x86 割り込みシステムの基礎を実装し、IDT を構築して CPU 例外をハンドリングできる環境を整備する。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## 背景
 
-## Today's Goal
+Day4 までで freestanding C 環境が構築できたが、OS 開発ではプログラムエラーやハードウェアイベントを適切に処理する必要がある。本日は割り込みシステムの基礎として IDT を構築し、CPU 例外のハンドリング環境を整える。
 
-Initialize hardware timer (PIT) and interrupt controller (PIC), generate 100Hz timer interrupts, and verify operation.
+## 新しい概念
 
-## Background
+-   **割り込み (Interrupt)**: CPU に対する「イベント通知」の仕組み。ハードウェアやソフトウェアからの非同期要求に応答し、現在の処理を一時中断してハンドラを実行。OS の応答性を高める核となる概念。
+-   **IRQ (Interrupt ReQuest)**: 割り込み要求信号が通る物理的な線（割り込み線）。PIC が複数の IRQ を管理し、CPU に伝達。IRQ 0-15 が標準的に割り当てられており、それぞれキーボード、タイマー等のデバイスに対応。
+-   **PIC (Programmable Interrupt Controller)**: 8259A チップで、複数のデバイスからの IRQ を束ねて CPU に効率的に伝達。BIOS 設定では IRQ0-15 を 32-47 番に再マップして使用し、OS の割り込み管理を可能にする。
+-   **IDT (Interrupt Descriptor Table)**: 割り込みハンドラのアドレステーブル。CPU 例外やハードウェア割り込みが発生した際に、どの関数を呼び出すかを定義。
 
-While we built an IDT in Day 5 to handle CPU exceptions, OS development also requires processing asynchronous interrupts from hardware. Today we'll remap the PIC and use PIT to generate periodic timer interrupts, establishing a hardware interrupt processing environment.
+## 学習内容
 
-## New Concepts
+-   **IDT 基礎**: Interrupt Descriptor Table の構造と役割の理解
+-   **例外システム**: CPU 例外（0〜31）の分類とハンドリング方法
+-   **アセンブリ連携**: ISR スタブと C ハンドラの協調動作
+-   **テーブル管理**: `lidt` 命令による IDT 登録の実装
+-   **デバッグ技術**: ソフト割り込み（`int 0x03`）によるデバッグ手法
+-   **エラー処理**: CPU 例外からの情報表示と復旧方法
 
--   **PIT (Programmable Interval Timer)**: 8254 chip that generates periodic interrupts as timer device. Divides reference clock 1.193182MHz to generate arbitrary periods. Channel 0 is used as system timer, forming foundation for scheduling.
--   **PIC (Programmable Interrupt Controller)**: 8259A chip that bundles IRQs from multiple devices and efficiently transmits to CPU. In BIOS settings, remaps IRQ0-15 to 32-47 for OS interrupt management.
--   **EOI (End Of Interrupt)**: Command to notify PIC that interrupt processing is complete. Necessary to allow next interrupt.
+【用語整理】例外と IRQ の違い
 
-## Learning Content
+-   例外（Exception）: CPU 内部の同期イベント（0 除算、無効オペコード、ページフォルト等）。命令実行の“その時点”で起きます。
+-   IRQ（Interrupt Request）: デバイス由来の非同期イベント（タイマ、キーボード等）。外部からの信号で発生します。
 
--   PIC (Programmable Interrupt Controller) 8259A remapping (IRQ0→INT 32, etc.)
-    -   What is PIC: Controller that transmits interrupt signals from external devices to CPU
-    -   Remapping: Change BIOS initial interrupt vectors (0-15) to 32-47 for OS use
--   PIT (Programmable Interval Timer) 8254 initialization (Divisor setting)
-    -   What is PIT: Timer chip that generates periodic interrupts
-    -   Divisor: Set interrupt interval by dividing clock frequency (100Hz=10ms interval)
--   IRQ (external interrupt) handler registration and EOI (End Of Interrupt)
-    -   IRQ: Interrupt Request, interrupt request from hardware
-    -   EOI: Notify PIC that interrupt processing is complete, allow next interrupt
--   CPU interrupt enable (`sti`) and interrupt flow
-    -   sti: Set Interrupt Flag, configure CPU to accept interrupts
-    -   Interrupt flow: Device →PIC→CPU→ISR handler →EOI
+【IDT ゲートの実体】
 
-## Task List
+-   「何番の割り込みでどの関数に飛ぶか」を記すテーブルの 1 エントリ。32bit OS では“割り込みゲート(0x8E)”を使うのが基本です。
 
--   [ ] Remap PIC to assign IRQ0-15 to IDT 32-47
--   [ ] Initialize PIT to set 100Hz (10ms period) timer interrupts
--   [ ] Add IRQ0 stub to interrupt.s and perform register save/restore
--   [ ] Implement timer interrupt handler in kernel.c and update tick counter
--   [ ] Register IRQ0 (vector 32) to IDT and enable interrupt processing
--   [ ] Send EOI to PIC at appropriate timing
--   [ ] Enable CPU interrupts with sti instruction and confirm heartbeat display
+## タスクリスト
 
-## Prerequisites Check
+-   [ ] IDT の構造体を定義し、エントリを設定する関数を実装する
+-   [ ] interrupt.s で ISR スタブ（0〜31）を作成し、レジスタ保存/復元を行う
+-   [ ] kernel.c で IDT を初期化し、代表的な例外ハンドラを実装する
+-   [ ] lidt 命令で IDT をプロセッサに登録する
+-   [ ] ソフト割り込み（int 0x03）で例外処理をテストする
+-   [ ] ゼロ除算などの CPU 例外でハンドラが動作することを確認する
 
-### Required Knowledge
+## 前提知識の確認
 
--   Day 01-05 (boot, GDT, protected mode, VGA, IDT/exceptions)
--   I/O port access (`inb/outb`)
+### 必要な知識
 
-### What's New Today
+-   **Day 01〜02**: ブートローダ、GDT、プロテクトモード切り替え
+-   **Day 03〜04**: freestanding C、VGA/シリアル出力、インラインアセンブリ
+-   **C 言語**: 構造体、関数ポインタ、ビット操作、ヘッダファイル管理
+-   **アセンブリ基礎**: レジスタ、スタック操作、関数呼び出し規約
 
--   PIC initialization procedure with ICW1-ICW4 and mask settings
--   PIT command register (0x43) and channel 0 (0x40) divisor value settings
--   EOI issuing from hardware interrupt handlers
+### 今日新しく学ぶこと
 
-## Approach and Configuration
+-   **IDT 構造**: エントリレイアウト（オフセット、セレクタ、属性フィールド）
+-   **例外分類**: CPU 例外とハードウェア割り込みの違い
+-   **エラーコード**: 例外によるエラー情報の有無と処理方法
+    -   すべての例外がエラーコードを持つわけではない（ゼロ除算#DE などはなし）
+    -   エラーコードあり: ページフォルト#PF（違反アドレス）、一般保護違反#GP など
+    -   エラーコードなし: ゼロ除算#DE、無効オペコード#UD など
+    -   ISR ではスタックを揃えるため、エラーコードなし例外でもダミー値を push
+-   **レジスタ保存**: 割り込み時の CPU 状態保存・復旧メカニズム
+-   **呼び出し規約**: アセンブリから C 関数への安全な移行方法
 
-Like Day 05, keep assembly minimal (under boot/) and configure PIC/PIT/IDT in C.
+### CPU 例外（Exception）0-31の詳細
+
+x86 アーキテクチャで定義されているCPU例外を分類して説明します：
+
+#### 0-7: 一般的なプログラミングエラー
+- **0: Divide Error (#DE)** - ゼロ除算が発生した場合
+- **1: Debug Exception (#DB)** - デバッグ機能関連の例外
+- **2: NMI (Non-Maskable Interrupt)** - メモリパリティエラーなどの深刻なハードウェアエラー
+- **3: Breakpoint (#BP)** - `int 3`命令（ブレークポイント）実行時
+- **4: Overflow (#OF)** - INTO命令による算術オーバーフロー
+- **5: BOUND Range Exceeded (#BR)** - BOUND命令による境界チェック違反
+- **6: Invalid Opcode (#UD)** - 未定義または無効な命令コード
+- **7: Device Not Available (#NM)** - コプロセッサ（FPUなど）が利用不可
+
+#### 8-15: 深刻なシステムエラー
+- **8: Double Fault (#DF)** - 例外処理中に別の例外が発生した場合
+- **9: Coprocessor Segment Overrun** - コプロセッサセグメントオーバーラン（古い）
+- **10: Invalid TSS (#TS)** - タスク状態セグメント（TSS）が無効
+- **11: Segment Not Present (#NP)** - 参照しようとしたセグメントが存在しない
+- **12: Stack Segment Fault (#SS)** - スタックセグメントエラー
+- **13: General Protection Fault (#GP)** - 一般的な保護違反（セグメント制限超過など）
+- **14: Page Fault (#PF)** - ページフォルト（メモリアクセス違反）
+- **15: Reserved** - 将来の拡張用に予約済み
+
+#### 16-31: システム機能・予約領域
+- **16: Floating Point Error (#MF)** - 浮動小数点演算エラー
+- **17: Alignment Check (#AC)** - アライメントチェック違反
+- **18-31: Reserved** - システム予約または将来のCPU機能用
+
+#### エラーコードの有無による分類
+- **エラーコードなし**: 0, 1, 2, 3, 4, 5, 6, 7, 9, 16, 17 など
+- **エラーコードあり**: 8, 10, 11, 12, 13, 14 など（CPUが自動的にエラー情報をスタックにプッシュ）
+
+#### エラーコードありの例外と割り込みの詳細
+
+| カテゴリ | 番号 | 名前 | エラーコードの内容 | 説明 |
+|---------|------|------|-------------------|------|
+| **例外** | 8 | Double Fault (#DF) | なし | 例外処理中に別の例外が発生 |
+| **例外** | 10 | Invalid TSS (#TS) | セレクタ | 無効なタスク状態セグメント |
+| **例外** | 11 | Segment Not Present (#NP) | セレクタ | セグメントが存在しない |
+| **例外** | 12 | Stack Segment Fault (#SS) | スタックセレクタ | スタックセグメントエラー |
+| **例外** | 13 | General Protection (#GP) | セレクタ/詳細 | 一般的な保護違反 |
+| **例外** | 14 | Page Fault (#PF) | CR2レジスタ | メモリアクセス違反アドレス |
+| **割り込み** | 32-47 | PIC IRQ 0-15 | **なし** | 標準ハードウェア割り込み |
+| **割り込み** | 48-255 | ソフトウェア割り込み | 状況による | OS独自・システムコール |
+
+**注意**: 標準的なPIC割り込み（IRQ 0-15）はCPUがエラーコードをプッシュしません。ソフトウェア割り込み（システムコールなど）はOS設計によりエラーコードの有無が変わります。
+
+### ハードウェア割り込み（IRQ）32-255
+
+#### IRQ 32-47: PIC管理の標準割り込み
+BIOSによりIRQ 0-15が32-47にリマップされています：
+- **32 (IRQ0)**: システムタイマー（PIT - Programmable Interval Timer）
+- **33 (IRQ1)**: キーボードコントローラ
+- **34 (IRQ2)**: PICカスケード（スレーブPICに接続）
+- **35 (IRQ3)**: シリアルポート（COM2/COM4）
+- **36 (IRQ4)**: シリアルポート（COM1/COM3）
+- **37 (IRQ5)**: サウンドカードまたはリザーブ
+- **38 (IRQ6)**: フロッピーディスクコントローラ
+- **39 (IRQ7)**: パラレルポート（プリンタ）
+- **40 (IRQ8)**: リアルタイムクロック（RTC）
+- **41 (IRQ9)**: リダイレクトされたIRQ2
+- **42 (IRQ10)**: リザーブ
+- **43 (IRQ11)**: リザーブ
+- **44 (IRQ12)**: PS/2マウス
+- **45 (IRQ13)**: コプロセッサ（FPU割り込み）
+- **46 (IRQ14)**: IDEプライマリコントローラ
+- **47 (IRQ15)**: IDEセカンダリコントローラ
+
+#### IRQ 48-255: ソフトウェア割り込み・拡張機能
+- **48-255**: ソフトウェア割り込み、APIC、PCI割り込み、システムコール用
+- **ソフトウェア割り込み**: OS独自の割り込み（システムコールなど）
+- **APIC割り込み**: マルチプロセッサシステムでのプロセッサ間割り込み
+- **PCI割り込み**: PCIデバイスの拡張割り込み
+
+## 進め方と構成
+
+Day 03/04 と同じく、アセンブリは最小限（boot/ 配下）に留め、C で IDT を管理します。
 
 ```
 ├── boot
-│   ├── boot.s            # 16-bit: A20, built-in GDT, load kernel with INT 13h, PE switch
-│   ├── kernel_entry.s    # 32-bit: segment/stack setup → kmain()
-│   └── interrupt.s       # Exception + IRQ stubs (IRQ0) and common entry
-├── io.h                  # inb/outb/io_wait (C inline asm)
-├── kernel.c              # PIC remapping + PIT setup + IDT registration + handlers + demo
-├── vga.h                 # VGA API (C)
-└── Makefile              # Link boot + kernel + interrupt to generate os.img
+│   ├── boot.s            # 16bit: A20, GDT内蔵, INT 13hでkernel読込, PE切替
+│   ├── kernel_entry.s    # 32bit: セグメント/スタック設定 → kmain()
+│   └── interrupt.s       # 例外ISRスタブ（0〜31）と共通入口
+├── io.h                  # inb/outb/io_wait（Cインラインasm）
+├── kernel.c              # IDT構築・例外ハンドラ・動作デモ
+├── vga.h                 # VGA API（C）
+└── Makefile              # boot + kernel + interrupt を連結して os.img を生成
 ```
 
-See `day99_completed` for reference (PIC/PIT/IDT role division and handler configuration).
+### アーキテクチャ設計のポイント
 
-## Implementation Guide (Example)
+#### C 中心開発の継続
 
-The following are implementation guidelines. Write source comments carefully in the actual code.
+Day 03/04 で確立したパターンを継続：
 
-### 1. PIC Remapping (C)
+-   **最小アセンブリ**: 割り込みハンドラスタブのみアセンブリで記述
+-   **C メイン実装**: IDT 管理、例外処理ロジックは C で実装
+-   **段階的構築**: 基本例外から始めて、徐々にハードウェア割り込みへ拡張
 
-Purpose: Relocate IRQ0-IRQ15 to IDT 32-47 (to avoid collision with CPU exceptions 0-31)
+#### 新規追加要素
+
+-   **interrupt.s**: CPU 例外のアセンブリスタブ（ISR0〜ISR31）
+-   **IDT 管理**: kernel.c 内の IDT 構造体と設定関数
+-   **例外ハンドラ**: C による例外情報の解析と表示
+
+完成版の参考は `day05_completed/` を確認してください。
+
+## 実装ガイド
+
+### 1. 割り込み処理の基本概念
+
+#### x86 割り込みシステムの構造
+
+x86 プロセッサの割り込みシステムは以下の要素で構成されます：
+
+1. **IDT (Interrupt Descriptor Table)**: 割り込みハンドラのアドレステーブル
+2. **IDT エントリ**: 各割り込み/例外のハンドラ情報を格納
+3. **ISR (Interrupt Service Routine)**: 実際の割り込みハンドラコード
+4. **IDTR**: IDT の場所とサイズを示すレジスタ
+
+#### 処理の流れ
+
+1. **例外発生** → CPU が自動的に IDT を参照
+2. **ISR スタブ** → レジスタ保存、C ハンドラ呼び出し
+3. **C ハンドラ** → 例外情報の解析と適切な処理
+4. **復帰** → レジスタ復元、元の処理に戻る
+
+### 2. IDT 構造体の実装
+
+#### IDT エントリの構造
+
+各 IDT エントリは 8 バイトの構造体で、以下の情報を含みます：
 
 ```c
-#include "io.h"
-
-#define PIC1_CMD  0x20  // Master PIC command
-#define PIC1_DATA 0x21  // Master PIC data
-#define PIC2_CMD  0xA0  // Slave PIC command
-#define PIC2_DATA 0xA1  // Slave PIC data
-
-#define PIC_EOI   0x20  // End Of Interrupt
-
-static void remap_pic(void) {
-    uint8_t a1 = inb(PIC1_DATA); // Save current mask
-    uint8_t a2 = inb(PIC2_DATA);
-
-    // ICW1: Initialize, edge trigger, ICW4 required
-    outb(PIC1_CMD, 0x11);
-    outb(PIC2_CMD, 0x11);
-
-    // ICW2: Interrupt vector offset
-    outb(PIC1_DATA, 0x20); // Master: 0x20 (32)
-    outb(PIC2_DATA, 0x28); // Slave: 0x28 (40)
-
-    // ICW3: Cascade wiring
-    outb(PIC1_DATA, 0x04); // Master: Slave connected to IRQ2
-    outb(PIC2_DATA, 0x02); // Slave: ID=2
-
-    // ICW4: 8086/88 mode
-    outb(PIC1_DATA, 0x01);
-    outb(PIC2_DATA, 0x01);
-
-    // Restore mask (write 0xFE/0xFF to enable only IRQ0 initially)
-    outb(PIC1_DATA, a1);
-    outb(PIC2_DATA, a2);
-}
-
-static void set_irq_masks(uint8_t master_mask, uint8_t slave_mask) {
-    outb(PIC1_DATA, master_mask); // 0=enable, 1=disable
-    outb(PIC2_DATA, slave_mask);
-}
-
-static inline void send_eoi_master(void) { outb(PIC1_CMD, PIC_EOI); }
-static inline void send_eoi_slave(void)  { outb(PIC2_CMD, PIC_EOI); }
+// IDT エントリ（32ビット割り込みゲート）
+struct idt_entry {
+    uint16_t base_low;   // ハンドラアドレス下位16ビット
+    uint16_t sel;        // セグメントセレクタ（通常は0x08）
+    uint8_t  always0;    // 常に0（予約領域）
+    uint8_t  flags;      // 属性フラグ（Present、DPL、Type）
+    uint16_t base_high;  // ハンドラアドレス上位16ビット
+} __attribute__((packed));
 ```
 
-Example: To enable only IRQ0 (timer) initially → `set_irq_masks(0xFE, 0xFF);`
+#### フラグフィールドの詳細
 
-### 2. PIT Initialization (C)
+| ビット | 意味    | 説明                                     |
+| ------ | ------- | ---------------------------------------- |
+| 7      | Present | エントリが有効（1=有効、0=無効）         |
+| 6-5    | DPL     | 特権レベル（0=カーネル、3=ユーザ）       |
+| 4      | Storage | 常に 0（システム記述子）                 |
+| 3-0    | Type    | ゲートタイプ（0xE=32bit 割り込みゲート） |
 
-Purpose: Generate interrupts at 100Hz frequency (10ms).
-PIT clock is 1,193,182 Hz → divisor value `div = 1193182 / 100 = 11931(remainder)` (approximately 11932 is OK).
+### 3. IDT 管理システム
 
 ```c
-#define PIT_CH0   0x40
-#define PIT_CMD   0x43
+// ----- IDT 構築 -----
+struct idt_entry {
+    uint16_t base_low;   // ハンドラ下位16ビット
+    uint16_t sel;        // セグメントセレクタ（通常0x08）
+    uint8_t always0;     // 常に0
+    uint8_t flags;       // 0x8E = present/特権0/32bit割り込みゲート
+    uint16_t base_high;  // ハンドラ上位16ビット
+} __attribute__((packed));
 
-static void init_pit_100hz(void) {
-    uint16_t div = 11932; // 100Hz approximation
-    outb(PIT_CMD, 0x36);  // Channel 0, low-high, mode 3 (square wave), binary
-    outb(PIT_CH0, div & 0xFF);       // LSB
-    outb(PIT_CH0, (div >> 8) & 0xFF); // MSB
+
+struct idt_ptr {
+    uint16_t limit;  // IDTサイズ-1
+    uint32_t base;   // IDT先頭アドレス
+} __attribute__((packed));
+
+#define IDT_SIZE 256
+#define IDT_FLAG_PRESENT_DPL0_32INT 0x8E
+
+static struct idt_entry idt[IDT_SIZE];
+static struct idt_ptr idtr;
+
+static inline void lidt(void* idtr_ptr) {
+    __asm__ volatile("lidt (%0)" ::"r"(idtr_ptr));
 }
 
-【Note】0x36 command breakdown
-- ch0 / LSB→MSB / mode 3 (square wave) / binary mode
+static void set_idt_gate(int n, uint32_t handler) {
+    idt[n].base_low = handler & 0xFFFF;
+    idt[n].sel = 0x08;
+    idt[n].always0 = 0;
+    idt[n].flags = IDT_FLAG_PRESENT_DPL0_32INT;
+    idt[n].base_high = (handler >> 16) & 0xFFFF;
+}
+static void load_idt(void) {
+    idtr.limit = sizeof(idt) - 1;
+    idtr.base = (uint32_t)&idt[0];
+    lidt(&idtr);
+}
 ```
 
-### 3. IRQ0 (Timer) Stub (interrupt.s)
+### 2. ISR スタブ（アセンブリ）
 
-Add IRQ0 stub to Day 05's `interrupt.s` (use same common entry as exceptions).
+`boot/interrupt.s` に例外 0〜31 のスタブを定義し、共通入口でレジスタを退避 →C 関数へ渡します。
 
 ```assembly
+; 例外ISRスタブと共通ハンドラ（32bit）
 [bits 32]
 
-global irq0
-irq0:
-  push dword 0          ; Dummy error code
-  push dword 32         ; Vector number (remapped IRQ0)
-  jmp isr_common        ; To same common entry as exceptions
+%macro ISR_NOERR 1        ; エラーコードなし例外
+  global isr%1
+isr%1:
+  push dword 0            ; ダミーのエラーコードを積む
+  push dword %1           ; ベクタ番号
+  jmp isr_common
+%endmacro
+
+%macro ISR_ERR 1          ; エラーコードあり例外
+  global isr%1
+isr%1:
+  push dword %1           ; ベクタ番号（エラーコードはCPUがpush）
+  jmp isr_common
+%endmacro
+
+extern isr_handler_c      ; C側ハンドラ
+
+isr_common:
+  pusha                   ; 汎用レジスタ退避
+  cld
+  mov eax, esp            ; ESP上: [errcode][vec][pusha...] を渡す
+  push eax
+  call isr_handler_c
+  add esp, 4
+  popa
+  add esp, 8              ; vec + errcode をpop
+  iretd
+
+; 代表的な例外
+ISR_NOERR 0    ; Divide-by-zero
+ISR_NOERR 3    ; Breakpoint
+ISR_NOERR 6    ; Invalid Opcode
+ISR_ERR   13   ; General Protection Fault
+ISR_ERR   14   ; Page Fault
+; ... 必要に応じて 31 まで定義
 ```
 
-When registering to IDT, call `set_idt_gate(32, (uint32_t)irq0);`.
+注意:
 
-### 4. IDT Registration and Handler (C)
+-   エラーコードがある例外（#DF, #TS, #NP, #SS, #GP, #PF など）は `ISR_ERR` を使います。
+-   学習段階では代表的なもの（0, 3, 6, 13, 14 など）から始めても OK です。
 
-Build IDT same as Day 05 and register IRQ0 (vector 32). In handler, increment `tick` counter and notify EOI to PIC (master EOI is OK since not slave side).
+### 3. C 側ハンドラ（例外表示）
+
+`kernel.c` に以下のようなハンドラを用意します。VGA またはシリアルで情報を出力しましょう。
+
+#### スタック状態の詳細図解
+
+**割り込み発生時のスタック変化:**
+
+```
+割り込み発生前のスタック（ユーザーアプリケーション実行中）:
+Higher Address
++------------------+
+|   ユーザーデータ |
+|       ...        |
++------------------+ <- ESP (アプリケーション)
+|                  |
+Lower Address
+
+
+割り込み発生時（CPUが自動で積む）:
++------------------+
+|   ユーザーデータ |
+|       ...        |
++------------------+
+|      EFLAGS      | <- CPU自動
++------------------+
+|        CS        | <- CPU自動
++------------------+
+|       EIP        | <- CPU自動
++------------------+
+|   Error Code     | <- CPU自動（例外によっては無し）
++------------------+ <- ESP (割り込み時)
+
+
+ISRスタブ処理後（pusha + ベクタ番号）:
++------------------+
+|   ユーザーデータ |
++------------------+
+|      EFLAGS      |
++------------------+
+|        CS        |
++------------------+
+|       EIP        |
++------------------+
+|   Error Code     |
++------------------+
+|   Vector Number  | <- ISRスタブがpush
++------------------+
+|       EAX        | <- pusha
+|       ECX        | <- pusha
+|       EDX        | <- pusha
+|       EBX        | <- pusha
+|   ESP (dummy)    | <- pusha
+|       EBP        | <- pusha
+|       ESI        | <- pusha
+|       EDI        | <- pusha
++------------------+ <- ESP (C関数呼び出し時)
+```
+
+**isr_stack 構造体とスタックの対応:**
 
 ```c
-extern void irq0(void);
+struct isr_stack {
+    uint32_t edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax; // pusha順（逆順）
+    uint32_t int_no;   // ベクタ番号
+    uint32_t err_code; // エラーコード（ない場合は0）
+    // この上にCPUが積んだEIP, CS, EFLAGSがある
+};
 
-static volatile uint32_t tick = 0;
+// C関数側での使用例
+void isr_handler_c(struct isr_stack* frame) {
+    // frame->eax = 割り込み時のEAXレジスタ値
+    // frame->int_no = 割り込みベクタ番号（0=ゼロ除算, 3=ブレークポイント等）
+    // frame->err_code = エラーコード（ページフォルトなら違反アドレス）
 
-void irq_handler_timer(void) {
-    tick++;
-    if ((tick % 100) == 0) { // About every second (100Hz)
-        vga_puts(".");
-    }
-    send_eoi_master();
+    vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
+    vga_puts("[EXCEPTION] vec=");
+    int n = frame->int_no;
+    if (n >= 10) vga_putc('0' + (n/10));
+    vga_putc('0' + (n%10));
+    vga_puts(" err=");
+    int e = frame->err_code;
+    if (e >= 10) vga_putc('0' + (e/10));
+    vga_putc('0' + (e%10));
+    vga_puts("\n");
 }
+```
 
-// Common handler coming from isr_common to C (example)
-struct isr_stack { uint32_t regs[8]; uint32_t int_no; uint32_t err_code; };
-void isr_handler_c(struct isr_stack* f) {
-    if (f->int_no == 32) { irq_handler_timer(); return; }
-    // Others (exceptions etc.) delegate to Day 05 processing
-}
+**エラーコードの有無による違い:**
 
-static void idt_init_with_timer(void) {
-    // Omitted: Clear idt[] to 0 same as Day 05, register exceptions and necessary IRQs
-    set_idt_gate(32, (uint32_t)irq0);
+```
+エラーコード無しの例外（ISR_NOERR使用）:
+例: ゼロ除算(#DE), ブレークポイント(#BP)
+
+ISRスタブが実行する処理:
+push dword 0     ; ダミーのエラーコードを積む
+push dword %1    ; ベクタ番号
+jmp isr_common   ; 共通処理へ
+
+エラーコード有りの例外（ISR_ERR使用）:
+例: 一般保護違反(#GP), ページフォルト(#PF)
+
+ISRスタブが実行する処理:
+                 ; CPUが既にエラーコードを積んでいる
+push dword %1    ; ベクタ番号のみ追加
+jmp isr_common   ; 共通処理へ
+```
+
+### 4. IDT 登録と動作テスト
+
+-   `set_idt_gate(0, (uint32_t)isr0);` のように、例外スタブを IDT へ登録
+-   `load_idt();` で `lidt`
+-   テスト 1: `int 0x03`（ブレークポイント）を発行して表示を確認
+-   テスト 2: 故意にゼロ除算して `vec=0` を確認
+
+```c
+extern void isr0(void);  // interrupt.s 側で定義
+extern void isr3(void);
+extern void isr6(void);
+extern void isr13(void);
+extern void isr14(void);
+
+void init_idt_and_exceptions(void) {
+    for (int i=0;i<IDT_SIZE;i++) set_idt_gate(i, 0);
+    set_idt_gate(0,  (uint32_t)isr0);
+    set_idt_gate(3,  (uint32_t)isr3);
+    set_idt_gate(6,  (uint32_t)isr6);
+    set_idt_gate(13, (uint32_t)isr13);
+    set_idt_gate(14, (uint32_t)isr14);
     load_idt();
 }
-```
 
-### Supplement: What is EOI (End Of Interrupt) and How to Use?
-
-EOI is a command to notify the PIC (8259A) that "interrupt processing is complete." The PIC maintains an "In-Service" bit for each IRQ line and won't pass the same IRQ to CPU again until it receives EOI. Therefore, forgetting to send EOI will prevent subsequent same IRQs from being delivered, causing symptoms like timer appearing to stop or keyboard becoming unresponsive.
-
-- Basic forms
-  - Master PIC (IRQ0–7): `outb(PIC1_CMD, 0x20)`
-  - Slave PIC (IRQ8–15): First EOI to slave, then EOI to master (cascade release)
-
-- When to send
-  - For short handlers (counter increment, light logging, etc.), sending at end of processing is fine.
-  - However, if handler might perform heavy processing or thread switching (scheduling), sending EOI first is practical. Sending EOI first ensures next IRQ won't be lost after switching, allowing timer etc. to continue operating.
-  - This curriculum introduces preemption in Day 09, so for IRQ0 (PIT), we recommend the order "first EOI → then `tick++` or `schedule()`".
-
-- Common pitfalls
-  - Not sending EOI (or forgetting master EOI for slave interrupts)
-  - Infinite loop etc. in handler prevents reaching EOI
-  - Omitting EOI without enabling Auto-EOI mode (not covered in this material)
-
-- Code example (PIT/IRQ0: master only)
-  ```c
-  void timer_handler_c(void) {
-      send_eoi_master();       // Send EOI first to guarantee next IRQ
-      tick++;
-      if (tick - last >= slice) { /* schedule(); */ }
-  }
-  ```
-
-### 5. kmain Initialization Order
-
-```c
 void kmain(void) {
     vga_init();
-    vga_puts("Day 06: Timer IRQ (100Hz)\n");
+    vga_puts("Day 06: IDT & Exceptions\n");
+    init_idt_and_exceptions();
 
-    remap_pic();
-    set_irq_masks(0xFE, 0xFF);  // Allow only IRQ0
-    idt_init_with_timer();
-    init_pit_100hz();
-
-    __asm__ volatile ("sti");   // Enable CPU interrupts
-
-    // Main loop (do nothing)
-    for(;;) { __asm__ volatile ("hlt"); }
+    __asm__ volatile ("int $0x03");  // ソフト割り込み
+    // ゼロ除算テスト: 下行をコメント解除
+    // volatile int x=1, y=0; volatile int z = x / y;
 }
 ```
 
-### 6. Makefile (Example)
+### 5. Makefile（例）
 
--   Same as Day 05, build with boot split + C kernel configuration (including `interrupt.s`).
--   See `day06_complete/Makefile`.
+-   Day 03/04 と同様に、boot 分割＋ C カーネル構成でビルドします （`interrupt.s` を含める）。
+-   `day05_complete/Makefile`を参照してください。
 
-```makefile
-AS   = nasm
-CC   = i686-elf-gcc
-LD   = i686-elf-ld
-OBJCOPY = i686-elf-objcopy
-QEMU = qemu-system-i386
+## トラブルシューティング
 
-CFLAGS = -ffreestanding -m32 -nostdlib -fno-stack-protector -fno-pic -O2 -Wall -Wextra
+-   画面が真っ黒
+    -   GDT/PE 切替/ファージャンプの順序確認（Day 02/03 を参照）
+    -   `lidt` の引数（`idtr`）の `limit`/`base` が正しいか
+-   例外が表示されない
+    -   IDT エントリの `flags=0x8E` と `sel=0x08` を確認
+    -   ISR スタブのシンボル名と `set_idt_gate` 登録番号が一致しているか
+-   `iret/iretd` でクラッシュ
+    -   `isr_common` のスタック操作（push 順/加算量）が合っているか
+    -   エラーコードの有無で `ISR_NOERR`/`ISR_ERR` を使い分けているか
 
-BOOT    = boot/boot.s
-ENTRY   = boot/kernel_entry.s
-INTRASM = boot/interrupt.s   # Add IRQ0 stub
-KERNELC = kernel.c
+## 理解度チェック
 
-BOOTBIN = boot.bin
-KELF    = kernel.elf
-KBIN    = kernel.bin
-OS_IMG  = os.img
+1. IDT エントリの各フィールド（base/sel/flags）の意味を説明できますか？
+2. 例外のうち、エラーコードが自動で push されるものはどれですか？
+3. `int 0x03` とハードウェア割り込み（IRQ）の違いは？
+4. `lidt` 実行時に渡す `limit` と `base` の値はどのように決まりますか？
 
-all: $(OS_IMG)
-	@echo "✅ Day 06: Timer interrupt build complete"
-	@echo "🚀 make run to start"
+## 次のステップ
 
-$(BOOTBIN): $(BOOT)
-	$(AS) -f bin $(BOOT) -o $(BOOTBIN)
+-   ✅ IDT の基本構築（例外ハンドラ登録）
+-   ✅ ISR スタブ（アセンブリ）と C ハンドラ連携
+-   ✅ ソフト割り込み/例外の可視化
 
-kernel_entry.o: $(ENTRY)
-	$(AS) -f elf32 $(ENTRY) -o $@
-
-interrupt.o: $(INTRASM)
-	$(AS) -f elf32 $(INTRASM) -o $@
-
-kernel.o: $(KERNELC) vga.h io.h
-	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
-
-$(KELF): kernel_entry.o interrupt.o kernel.o
-	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o interrupt.o kernel.o
-
-$(KBIN): $(KELF)
-	$(OBJCOPY) -O binary $(KELF) $(KBIN)
-
-$(OS_IMG): $(BOOTBIN) $(KBIN)
-	cat $(BOOTBIN) $(KBIN) > $(OS_IMG)
-
-run: $(OS_IMG)
-	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
-
-clean:
-	rm -f $(BOOTBIN) kernel_entry.o interrupt.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
-
-.PHONY: all run clean
-```
-
-## Troubleshooting
-
--   No periods appearing (heartbeat not visible)
-    -   Calling `sti` and idling CPU with `hlt`?
-    -   Are PIC masks correct (`0xFE` / `0xFF`)?
-    -   Is `irq0` registered to IDT vector 32?
--   Stopping with exceptions
-    -   Do stack processing in `isr_common` and C-side analysis match?
-    -   Are exception and IRQ vector numbers (0-31 / 32-47) not mixed up?
-
-## Understanding Check
-
-1. Why is PIC remapping necessary?
-2. How do you calculate the divisor value for 100Hz?
-3. Where and when do you send EOI?
-4. How do you distinguish between exception and IRQ handlers?
-
-## Next Steps
-
--   ✅ PIC remapping and mask settings
--   ✅ PIT initialization (100Hz)
--   ✅ Heartbeat display in IRQ0 (timer) handler
-
-Day 07 will apply time management using timer ticks (tick counter) as a foundation for threads and tasks.
+Day 06 では PIC/PIT を導入し、ハードウェア割り込み（タイマ IRQ0 など）を扱えるようにします（PIC の再マッピング、割り込みマスク、PIT 設定）。

@@ -1,8 +1,10 @@
 // vga.h — VGAテキストモード制御
 #pragma once
 #include <stdint.h>
+
 #define VGA_WIDTH 80
 #define VGA_HEIGHT 25
+
 typedef enum {
     VGA_BLACK = 0,
     VGA_BLUE,
@@ -21,6 +23,7 @@ typedef enum {
     VGA_YELLOW,
     VGA_WHITE
 } vga_color_t;
+
 void vga_init(void);
 void vga_clear(void);
 void vga_set_color(vga_color_t fg, vga_color_t bg);

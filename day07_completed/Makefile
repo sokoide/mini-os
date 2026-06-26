@@ -1,4 +1,4 @@
-# Makefile for Day 07 Completed - TCB/READYリスト
+# Makefile for Day 07 Completed - タイマー割り込み（PIC/PIT）
 
 AS   = nasm
 CC   = i686-elf-gcc
@@ -10,6 +10,7 @@ CFLAGS = -ffreestanding -m32 -nostdlib -fno-stack-protector -fno-pic -O2 -Wall -
 
 BOOT    = boot/boot.s
 ENTRY   = boot/kernel_entry.s
+INTRASM = boot/interrupt.s
 KERNELC = kernel.c
 
 BOOTBIN = boot.bin
@@ -18,7 +19,7 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 07 Completed: TCB/READYデモ ビルド完了"
+	@echo "✅ Day 07 Completed: タイマー割り込みビルド完了"
 	@echo "🚀 実行: make run"
 
 $(BOOTBIN): $(BOOT)
@@ -27,11 +28,14 @@ $(BOOTBIN): $(BOOT)
 kernel_entry.o: $(ENTRY)
 	$(AS) -f elf32 $(ENTRY) -o $@
 
+interrupt.o: $(INTRASM)
+	$(AS) -f elf32 $(INTRASM) -o $@
+
 kernel.o: $(KERNELC) vga.h io.h
 	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
 
-$(KELF): kernel_entry.o kernel.o
-	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o kernel.o
+$(KELF): kernel_entry.o interrupt.o kernel.o
+	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o interrupt.o kernel.o
 
 $(KBIN): $(KELF)
 	$(OBJCOPY) -O binary $(KELF) $(KBIN)
@@ -44,6 +48,7 @@ run: $(OS_IMG)
 	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
 
 clean:
-	rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
+	rm -f $(BOOTBIN) kernel_entry.o interrupt.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
 
 .PHONY: all run clean
+

@@ -1,176 +1,170 @@
-# Day 12: Integration and Final Project - Completing a Practical OS ✨
+# Day 12: 統合と最終プロジェクト - 実用 OS の完成 ✨
 
----
+## 本日のゴール
 
-🌐 Available languages:
+Day1 から Day11 までの全機能を統合し、実用的で堅牢な OS を完成させる。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## 背景
 
-## Today's Goal
+Day1 から Day11 までで OS 開発の基礎を学習し、ブートローダー、プロテクトモード、割り込み、スケジューリング、スリープ、キーボード入力などの機能を個別に実装してきた。本日はこれらを統合し、品質向上、テスト、ドキュメントを追加して、実用的レベルの OS を完成させる。
 
-Integrate all features from Day 1 to Day 11 to complete a practical and robust OS.
+## 新しい概念
 
-## Background
+-   **品質向上**: コードの堅牢化、エラーハンドリング、メモリ安全性確保。
+-   **統合テスト**: QEMU ヘッドレステストによる自動品質検証と安定性確認。
+-   **プロフェッショナルドキュメント**: API 仕様書、アーキテクチャ説明、トラブルシューティング。
+-   **モジュール化アーキテクチャ**: 機能別ファイル分割による保守性向上。
 
-From Day 1 to Day 11, we learned the basics of OS development and individually implemented features like the bootloader, protected mode, interrupts, scheduling, sleep, and keyboard input. Today, we will integrate these, improve quality, add tests and documentation to complete a practical-level OS.
+## 学習内容
 
-## New Concepts
+**Day 12 の完成された実装:**
 
-- **Quality Improvement**: Code hardening, error handling, memory safety.
-- **Integration Testing**: Automatic quality verification and stability confirmation with QEMU headless testing.
-- **Professional Documentation**: API specifications, architecture explanation, troubleshooting.
-- **Modular Architecture**: Improved maintainability through function-based file separation.
+-   モジュール化されたアーキテクチャ（`src/`, `include/`構造）
+-   包括的なキーボード入力システム（`src/keyboard.c`）
+-   統一的なカーネル状態管理（`src/kernel.c`）
+-   デバッグユーティリティの充実（`src/debug_utils.c`）
 
-## Learning Content
+**品質向上とエラーハンドリング:**
 
-**Completed implementation for Day 12:**
+-   全 API の堅牢化（NULL チェック、境界条件、戻り値検証）
+-   スレッド安全なリングバッファとリスト操作
+-   割り込み処理の最適化とデッドロック防止
+-   メモリ安全性とバッファオーバーフロー対策
 
--   Modular architecture (`src/`, `include/` structure)
--   Comprehensive keyboard input system (`src/keyboard.c`)
--   Unified kernel state management (`src/kernel.c`)
--   Enhanced debugging utilities (`src/debug_utils.c`)
+**包括的テストシステム:**
 
-**Quality Improvement and Error Handling:**
+-   QEMU ヘッドレステストによる自動品質検証
+-   シリアルログベースの動作確認とデバッグ
+-   スレッド切り替え、スリープ、キーボード入力の統合テスト
+-   ストレステストによる長時間動作の安定性確認
 
--   Robustness of all APIs (NULL checks, boundary conditions, return value validation)
--   Thread-safe ring buffer and list operations
--   Interrupt handling optimization and deadlock prevention
--   Memory safety and buffer overflow countermeasures
+## タスクリスト
 
-**Comprehensive Test System:**
+-   [ ] モジュール化されたプロジェクト構造への移行
+-   [ ] 包括的なキーボード入力システムの完成
+-   [ ] 統一的なカーネル状態管理の実装
+-   [ ] デバッグユーティリティの充実
+-   [ ] 全 API の堅牢化（NULL チェック、境界条件、戻り値検証）
+-   [ ] スレッド安全なリングバッファとリスト操作の実装
+-   [ ] QEMU ヘッドレステストによる自動品質検証システム
+-   [ ] シリアルログベースの動作確認とデバッグ
+-   [ ] スレッド切り替え、スリープ、キーボード入力の統合テスト
+-   [ ] 警告のないクリーンなコードに修正
+-   [ ] API 仕様書とアーキテクチャ説明ドキュメントの作成
+-   [ ] トラブルシューティングガイドとデバッグ方法の整備
 
--   Automatic quality verification with QEMU headless testing
--   Operation check and debugging based on serial logs
--   Integration tests for thread switching, sleep, and keyboard input
--   Stability confirmation of long-term operation through stress tests
+## Day 12 完成されたアーキテクチャ
 
-## Task List
-
--   [ ] Transition to a modular project structure
--   [ ] Complete the comprehensive keyboard input system
--   [ ] Implement unified kernel state management
--   [ ] Enhance debugging utilities
--   [ ] Make all APIs robust (NULL checks, boundary conditions, return value validation)
--   [ ] Implement thread-safe ring buffer and list operations
--   [ ] Automatic quality verification system with QEMU headless testing
--   [ ] Operation check and debugging based on serial logs
--   [ ] Integration tests for thread switching, sleep, and keyboard input
--   [ ] Fix code to be clean with no warnings
--   [ ] Create API specification and architecture explanation documents
--   [ ] Prepare troubleshooting guide and debugging methods
-
-## Day 12 Completed Architecture
-
-### Project Structure
+### プロジェクト構造
 
 ```
 day12_completed/
-├── src/                    # Source code
-│   ├── boot/              # Boot code and assembly
-│   │   ├── boot.s         # MBR bootloader
-│   │   ├── kernel_entry.s # Kernel entry point
-│   │   ├── interrupt.s    # Interrupt handler (asm)
-│   │   └── context_switch.s # Context switch
-│   ├── kernel.c           # Main kernel functions
-│   ├── keyboard.c         # Keyboard driver
-│   └── debug_utils.c      # Debug utilities
-├── include/               # Header files
-│   ├── kernel.h           # Kernel function declarations
-│   ├── keyboard.h         # Keyboard function declarations
-│   ├── debug_utils.h      # Debug function declarations
-│   ├── error_types.h      # Error type definitions
-│   ├── io.h               # I/O port operations
-│   └── vga.h              # VGA control
+├── src/                    # ソースコード
+│   ├── boot/              # ブートコードとアセンブリ
+│   │   ├── boot.s         # MBRブートローダー
+│   │   ├── kernel_entry.s # カーネルエントリーポイント
+│   │   ├── interrupt.s    # 割り込みハンドラ（asm）
+│   │   └── context_switch.s # コンテキストスイッチ
+│   ├── kernel.c           # メインカーネル機能
+│   ├── keyboard.c         # キーボードドライバ
+│   └── debug_utils.c      # デバッグユーティリティ
+├── include/               # ヘッダーファイル
+│   ├── kernel.h           # カーネル関数宣言
+│   ├── keyboard.h         # キーボード関数宣言
+│   ├── debug_utils.h      # デバッグ関数宣言
+│   ├── error_types.h      # エラータイプ定義
+│   ├── io.h               # I/Oポート操作
+│   └── vga.h              # VGA制御
 ├── linker/
-│   └── kernel.ld          # Linker script
-├── tests/                 # Test system
-└── Makefile               # Build system
+│   └── kernel.ld          # リンカースクリプト
+├── tests/                 # テストシステム
+└── Makefile               # ビルドシステム
 ```
 
-### Completion of the Keyboard Input System
+### キーボード入力システムの完成
 
-Day 12 significantly expands the basic interrupt-driven keyboard input from Day 11:
+Day 12 では、Day 11 の基本的な割り込み駆動キーボード入力を大幅に拡張しました：
 
-**Comprehensive Keyboard Features (`src/keyboard.c`):**
+**包括的なキーボード機能 (`src/keyboard.c`)**：
 
--   **`getchar_blocking()`**: Single character input (equivalent to `scanf("%c")`)
--   **`read_line()`**: String input (equivalent to `scanf("%s")`)
--   **Backspace handling**: Function to correct input mistakes
--   **Input validation**: Accepts only printable characters
--   **Echo display**: Real-time input feedback
+-   **`getchar_blocking()`**: 単一文字入力（scanf("%c")相当）
+-   **`read_line()`**: 文字列入力（scanf("%s")相当）
+-   **バックスペース処理**: 入力ミスの修正機能
+-   **入力検証**: 印刷可能文字のみ受付
+-   **エコー表示**: リアルタイムな入力フィードバック
 
-**Advanced Buffer Management:**
+**高度なバッファ管理**：
 
--   **Circular buffer**: Efficient asynchronous data management
--   **Overflow protection**: Safe handling when the buffer is full
--   **Thread-safe**: Safe cooperation with the interrupt handler
+-   **循環バッファ**: 効率的な非同期データ管理
+-   **オーバーフロー保護**: バッファ満杯時の安全な処理
+-   **スレッドセーフ**: 割り込みハンドラとの安全な連携
 
-### Advantages of Modularization
+### モジュール化の利点
 
-**Improved Maintainability:**
+**保守性の向上**：
 
--   Clear responsibilities through function-based file separation
--   Dependency management with header files
--   Ease of unit testing
+-   機能別ファイル分割による責任の明確化
+-   ヘッダーファイルによる依存関係の管理
+-   単体テストの容易性
 
-**Improved Extensibility:**
+**拡張性の向上**：
 
--   Easy to add new device drivers
--   Possibility of parallel development due to functional independence
--   Easy to port features to other projects
+-   新しいデバイスドライバの追加が容易
+-   機能の独立性による並行開発の可能性
+-   他のプロジェクトへの機能移植が簡単
 
-### Enhancement of the Debug System
+### デバッグシステムの充実
 
-**Comprehensive Debug Output (`src/debug_utils.c`):**
+**包括的なデバッグ出力 (`src/debug_utils.c`)**：
 
--   **System metrics**: Number of threads, interrupts, keyboard events
--   **State display**: Currently running thread, scheduler lock state
--   **Performance monitoring**: System ticks, memory usage
+-   **システムメトリクス**: スレッド数、割り込み数、キーボードイベント数
+-   **状態表示**: 現在実行中のスレッド、スケジューラロック状態
+-   **パフォーマンス監視**: システムティック、メモリ使用状況
 
-**Dual Output System:**
+**デュアル出力システム**：
 
--   **VGA**: Real-time screen display
--   **Serial**: For log files and remote debugging
+-   **VGA**: リアルタイムな画面表示
+-   **Serial**: ログファイルやリモートデバッグ用
 
-## Evolution from Day 11 to 12
+## Day 11 から 12 への進化
 
-### Day 11 Basic Implementation
+### Day 11 の基本実装
 
--   Basic interrupt-driven keyboard input
--   Simple ring buffer
--   Code with warnings
+-   基本的な割り込み駆動キーボード入力
+-   単純なリングバッファ
+-   警告を含むコード
 
-### Day 12 Complete Implementation
+### Day 12 の完成実装
 
--   **Modularization**: Function-based file separation
--   **Advanced Keyboard**: String input, backspace support
--   **Robustness**: Error handling, input validation
--   **Quality**: Clean code with zero warnings
--   **Testability**: Comprehensive debug system
+-   **モジュール化**: 機能別ファイル分割
+-   **高機能キーボード**: 文字列入力、バックスペース対応
+-   **堅牢性**: エラーハンドリング、入力検証
+-   **品質**: 警告ゼロのクリーンなコード
+-   **テスト性**: 包括的なデバッグシステム
 
-## Implementation Guide
+## 実装ガイド
 
-### Day 12 Modular Architecture Implementation
+### Day 12 のモジュール化アーキテクチャ実装
 
-**Creating the Project Structure**
+**プロジェクト構造の作成**
 
 ```bash
-# Create directory structure
+# ディレクトリ構造作成
 mkdir -p day12_completed/{src/{boot,},include,linker,tests,build}
 
-# Place source files
+# ソースファイル配置
 day12_completed/
 ├── src/
-│   ├── boot/          # Assembly code
-│   ├── kernel.c       # Main kernel
-│   ├── keyboard.c     # Keyboard driver
-│   └── debug_utils.c  # Debug functions
-├── include/           # Header files
-├── linker/kernel.ld   # Linker script
-└── Makefile           # Build system
+│   ├── boot/          # アセンブリコード
+│   ├── kernel.c       # メインカーネル
+│   ├── keyboard.c     # キーボードドライバ
+│   └── debug_utils.c  # デバッグ機能
+├── include/           # ヘッダーファイル群
+├── linker/kernel.ld   # リンカースクリプト
+└── Makefile           # ビルドシステム
 ```
 
-**Complete Implementation of keyboard.c**
+**keyboard.c の完全実装**
 
 ```c
 // ============================================================================
@@ -185,10 +179,10 @@ day12_completed/
 #define NULL ((void*)0)
 
 // ============================================================================
-// Constants and Global Variables
+// 定数定義とグローバル変数
 // ============================================================================
 
-// Scancode to ASCII (US layout, Shift ignored, make only)
+// スキャンコード→ASCII（US配列, Shift無視, makeのみ）
 static const char scancode_map[128] = {
     0,   27,   '1',  '2', '3',  '4', '5', '6', '7', '8', '9', '0', '-',
     '=', '\b', '\t', 'q', 'w',  'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
@@ -199,7 +193,7 @@ static const char scancode_map[128] = {
     0,   0,    0,    0,   0,    0,   0,   0,   0,   0,
 };
 
-// Keyboard ring buffer
+// キーボードリングバッファ
 static volatile char kbuf[KEYBOARD_BUFFER_SIZE];
 static volatile uint32_t khead = 0, ktail = 0;
 
@@ -228,16 +222,16 @@ static int kbuf_pop(char* out) {
 }
 
 // ============================================================================
-// Internal Helper Functions
+// 内部ヘルパー関数
 // ============================================================================
 
-// PS/2 keyboard initialization
+// PS/2キーボード初期化
 static inline int ps2_output_full_internal(void) {
     return (inb(0x64) & 0x01);
 }
 
 void ps2_keyboard_init(void) {
-    // Special initialization is often not necessary in QEMU. Just clean the output buffer lightly.
+    // QEMUでは特別な初期化は不要な場合が多い。出力バッファを軽く掃除のみ。
     int guard = 32;
     while (ps2_output_full_internal() && guard--) {
         (void)inb(0x60);
@@ -245,20 +239,20 @@ void ps2_keyboard_init(void) {
 }
 
 // ============================================================================
-// Public API Functions
+// パブリックAPI関数群
 // ============================================================================
 
-// Keyboard initialization
+// キーボード初期化
 void keyboard_init(void) {
     ps2_keyboard_init();
 }
 
-// Keyboard interrupt handler
+// キーボード割り込みハンドラ
 void keyboard_handler_c(void) {
-    // Notify PIC of interrupt completion
+    // PIC に割り込み処理完了を通知
     outb(0x20, 0x20);
 
-    // Check if keyboard data is available to be read
+    // キーボードデータの読み取り可能性をチェック
     uint8_t status = inb(0x64);
     if (!(status & 0x01)) {
         serial_write_string(
@@ -266,42 +260,41 @@ void keyboard_handler_c(void) {
         return;
     }
 
-    // Read scancode
+    // スキャンコードを読み取り
     uint8_t scancode = inb(0x60);
 
-    // Ignore key release operations (break code)
+    // キー離す操作は無視（break code）
     if (scancode & 0x80) {
         return;
     }
 
-    // Convert scancode to ASCII character
+    // スキャンコードをASCII文字に変換
     char ch = (scancode < 128) ? scancode_map[scancode] : 0;
 
     if (ch != 0) {
-        // Store in buffer
+        // バッファに格納
         kbuf_push(ch);
 
-        // Debug output
+        // デバッグ出力
         serial_write_string("KEY: ");
         serial_write_char(ch);
         serial_write_string(" (");
         serial_puthex(scancode);
         serial_write_string(")\n");
 
-        // Move waiting threads to READY (if any)
+        // 入力待ちスレッドをREADYへ（もしあれば）
         unblock_keyboard_threads();
     }
 }
 
-// Blocking character input
+// ブロッキング文字入力
 char getchar_blocking(void) {
     char c;
-    for (;;)
-    {
+    for (;;) {
         if (kbuf_pop(&c))
             return c;
 
-        // Block if no input
+        // 入力が無ければブロック
         asm volatile("cli");
         if (kbuf_pop(&c)) {
             asm volatile("sti");
@@ -314,17 +307,17 @@ char getchar_blocking(void) {
     }
 }
 
-// Check if keyboard buffer is empty
+// キーボードバッファ空チェック
 int keyboard_buffer_empty(void) {
     return kbuf_is_empty();
 }
 
-// Line input function (ported and improved from day99_completed)
+// 行入力関数 (day12_completed から移植・改良)
 void read_line(char* buffer, int max_length) {
     // Enhanced input validation
     if (!buffer || max_length <= 1) {
         serial_write_string("read_line: Invalid parameters\n");
-        return;  // Invalid parameters
+        return;  // 無効なパラメータ
     }
 
     // Additional safety: reasonable upper limit check
@@ -344,35 +337,36 @@ void read_line(char* buffer, int max_length) {
         c = getchar_blocking();
 
         if (c == 10 || c == 13) {  // LF or CR
-            // End input on newline
+            // 改行で入力終了
             break;
         } else if (c == 8 && pos > 0) {  // Backspace
-            // Handle backspace
+            // バックスペース処理
             pos--;
-            // Remove character from screen (backspace + space + backspace)
+            // 画面からも文字を削除（バックスペース + スペース +
+            // バックスペース）
             serial_write_char(8);
             serial_write_char(' ');
             serial_write_char(8);
         } else if (c >= 32 && c <= 126) {
-            // Accept only printable characters
+            // 印刷可能文字のみ受け入れ
             buffer[pos] = c;
             pos++;
-            // Echo display
+            // エコー表示
             serial_write_char(c);
         }
-        // Ignore other control characters
+        // それ以外の制御文字は無視
     }
 
-    buffer[pos] = 0;        // String terminator
-    serial_write_char(10);  // Output newline
+    buffer[pos] = 0;        // 文字列終端
+    serial_write_char(10);  // 改行を出力
 }
 
-// Check PS/2 output buffer
+// PS/2出力バッファ確認
 int ps2_output_full(void) {
     return ps2_output_full_internal();
 }
 
-// Unblock threads waiting for keyboard
+// キーボード待機スレッドのブロック解除
 void unblock_keyboard_threads(void) {
     asm volatile("cli");
     kernel_context_t* ctx = get_kernel_context();
@@ -400,27 +394,27 @@ void unblock_keyboard_threads(void) {
 }
 ```
 
-**Makefile Implementation**
+**Makefile の実装**
 
 ```makefile
-# Day 12 Integrated Build System
+# Day 12 統合ビルドシステム
 CC = i686-elf-gcc
 LD = i686-elf-ld
 ASM = nasm
 OBJCOPY = i686-elf-objcopy
 
-# Directories
+# ディレクトリ
 SRC_DIR = src
 BOOT_DIR = $(SRC_DIR)/boot
 INCLUDE_DIR = include
 BUILD_DIR = build
 
-# Flags
+# フラグ
 CFLAGS = -ffreestanding -m32 -nostdlib -fno-stack-protector \
          -fno-pic -O2 -Wall -Wextra -I$(INCLUDE_DIR)
 LDFLAGS = -m elf_i386 -T linker/kernel.ld
 
-# Object files
+# オブジェクトファイル
 BOOT_OBJECTS = $(BUILD_DIR)/boot.bin $(BUILD_DIR)/kernel_entry.o \
                $(BUILD_DIR)/interrupt.o $(BUILD_DIR)/context_switch.o
 KERNEL_OBJECTS = $(BUILD_DIR)/kernel.o $(BUILD_DIR)/keyboard.o \
@@ -430,15 +424,15 @@ KERNEL_OBJECTS = $(BUILD_DIR)/kernel.o $(BUILD_DIR)/keyboard.o \
 
 all: os.img
 
-# Boot sector
+# ブートセクタ
 $(BUILD_DIR)/boot.bin: $(BOOT_DIR)/boot.s | $(BUILD_DIR)
 	$(ASM) -f bin $< -o $@
 
-# Assembly objects
+# アセンブリオブジェクト
 $(BUILD_DIR)/%.o: $(BOOT_DIR)/%.s | $(BUILD_DIR)
 	$(ASM) -f elf32 $< -o $@
 
-# C objects
+# Cオブジェクト
 $(BUILD_DIR)/kernel.o: $(SRC_DIR)/kernel.c $(INCLUDE_DIR)/*.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -448,45 +442,44 @@ $(BUILD_DIR)/keyboard.o: $(SRC_DIR)/keyboard.c $(INCLUDE_DIR)/keyboard.h | $(BUI
 $(BUILD_DIR)/debug_utils.o: $(SRC_DIR)/debug_utils.c $(INCLUDE_DIR)/debug_utils.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Kernel link
+# カーネルリンク
 $(BUILD_DIR)/kernel.elf: $(BOOT_OBJECTS) $(KERNEL_OBJECTS)
 	$(LD) $(LDFLAGS) $(filter-out $(BUILD_DIR)/boot.bin,$^) -o $@
 
 $(BUILD_DIR)/kernel.bin: $(BUILD_DIR)/kernel.elf
 	$(OBJCOPY) -O binary $< $@
 
-# Create OS image
+# OS イメージ作成
 os.img: $(BUILD_DIR)/boot.bin $(BUILD_DIR)/kernel.bin
 	cat $^ > $@
+	truncate -s 1440K $@
 
-truncate -s 1440K $@
-
-# Create build directory
+# ビルドディレクトリ作成
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-# Run tests
+# テスト実行
 test: os.img
 	qemu-system-i386 -drive format=raw,file=os.img -serial stdio -display none -no-reboot
 
-# Run normally
+# 通常実行
 run: os.img
 	qemu-system-i386 -drive format=raw,file=os.img
 
-# Clean up
+# クリーンアップ
 clean:
 	rm -rf $(BUILD_DIR) os.img
 
-# Help
+# ヘルプ
 help:
-	@echo "Available targets:"
-	@echo "  all     - Build the entire OS"
-	@echo "  run     - Run the OS in QEMU"
-	@echo "  test    - Run headless tests"
-	@echo "  clean   - Remove generated files"
+	@echo "利用可能なターゲット:"
+	@echo "  all     - OS全体をビルド"
+	@echo "  run     - QEMUでOSを実行"
+	@echo "  test    - ヘッドレステスト実行"
+	@echo "  clean   - 生成ファイルを削除"
 ```
 
-**Header File Design (include/keyboard.h)**
+**ヘッダーファイルの設計 (include/keyboard.h)**
 
 ```c
 #ifndef KEYBOARD_H
@@ -494,167 +487,177 @@ help:
 
 #include "error_types.h"
 
-// PS/2 keyboard constants
+// PS/2キーボード定数
 #define PS2_DATA 0x60
 #define PS2_STATUS 0x64
 #define PS2_OUTPUT_FULL 0x01
 
-// Keyboard buffer size
+// キーボードバッファサイズ
 #define KEYBOARD_BUFFER_SIZE 256
 
-// Keyboard function prototypes
+// キーボード関数プロトタイプ
 void keyboard_init(void);
 void keyboard_handler_c(void);
 char getchar_blocking(void);
 int keyboard_buffer_empty(void);
 void read_line(char* buffer, int max_length);
 
-// Keyboard test/debug functions
+// キーボードテスト・デバッグ関数
 int ps2_output_full(void);
 void unblock_keyboard_threads(void);
 
 #endif  // KEYBOARD_H
 ```
 
-**Integration Test System**
+**統合テストシステム**
 
 ```c
-// Test functions in kernel.c
+// kernel.c 内のテスト機能
 void run_integration_tests(void) {
-    serial_write_string("=== Day 12 Integration Test Start ===\n");
+    serial_write_string("=== Day 12 統合テスト開始 ===
+");
 
-    // Scheduler test
+    // スケジューラテスト
     test_scheduler_functionality();
 
-    // Keyboard test
+    // キーボードテスト
     test_keyboard_system();
 
-    // Sleep/wake test
+    // スリープ/ウェイクアップテスト
     test_sleep_wake_mechanism();
 
-    serial_write_string("=== All Tests Completed ===\n");
+    serial_write_string("=== 全テスト完了 ===
+");
 }
 
 void test_scheduler_functionality(void) {
-    serial_write_string("Scheduler Test: ");
+    serial_write_string("スケジューラテスト: ");
 
-    // Basic operation check
+    // 基本的な動作確認
     if (get_current_thread() != NULL) {
-        serial_write_string("OK\n");
+        serial_write_string("OK
+");
     } else {
-        serial_write_string("FAIL\n");
+        serial_write_string("FAIL
+");
     }
 }
 
 void test_keyboard_system(void) {
-    serial_write_string("Keyboard System Test: ");
+    serial_write_string("キーボードシステムテスト: ");
 
-    // Buffer operation check
+    // バッファの動作確認
     if (!keyboard_buffer_empty() || ps2_output_full() >= 0) {
-        serial_write_string("OK\n");
+        serial_write_string("OK
+");
     } else {
-        serial_write_string("FAIL\n");
+        serial_write_string("FAIL
+");
     }
 }
 ```
 
-### Implementation Phases
+### 実装フェーズ
 
-**Phase 1: Foundation Migration (1-2 hours)**
+**フェーズ 1: 基盤移行 (1-2 時間)**
 
-1.  Create directory structure
-2.  Split Day 11 code into modules
-3.  Create header files and organize dependencies
-4.  Create Makefile and confirm build
+1. ディレクトリ構造作成
+2. Day 11 のコードをモジュール別に分割
+3. ヘッダーファイル作成と依存関係整理
+4. Makefile 作成とビルド確認
 
-**Phase 2: Feature Enhancement (2-3 hours)**
+**フェーズ 2: 機能拡張 (2-3 時間)**
 
-1.  Implement advanced features in keyboard.c
-2.  Enhance debug_utils.c
-3.  Add comprehensive error handling
-4.  Implement input validation and buffer protection
+1. keyboard.c の高機能実装
+2. debug_utils.c の充実
+3. 包括的なエラーハンドリング追加
+4. 入力検証とバッファ保護の実装
 
-**Phase 3: Quality Improvement (1-2 hours)**
+**フェーズ 3: 品質向上 (1-2 時間)**
 
-1.  Resolve all warnings
-2.  Implement integration tests
-3.  Prepare documentation
-4.  Final operation check
+1. 全警告の解消
+2. 統合テストの実装
+3. ドキュメント整備
+4. 最終動作確認
 
-## Integration Completion Checklist
+## 統合完成チェックリスト
 
-### 🔧 Architecture Integration
+### 🔧 アーキテクチャ統合
 
--   [ ] **Modular Structure**: Functional division with src/, include/
--   [ ] **Scheduler System**: Preemptive multithreading
--   [ ] **Thread Lifecycle**: Complete implementation of create, block/unblock, schedule
--   [ ] **Multithread Safety**: Interrupt protection and scheduler lock
+-   [ ] **モジュール化構造**: src/, include/による機能分割
+-   [ ] **スケジューラシステム**: プリエンプティブマルチスレッド
+-   [ ] **スレッドライフサイクル**: create, block/unblock, schedule の完全実装
+-   [ ] **マルチスレッド安全性**: 割り込み保護とスケジューラロック
 
-### 🧪 Quality Assurance & Testing
+### 🧪 品質保証・テスト
 
--   [ ] **Zero-Warning Build**: Resolution of all compilation warnings
--   [ ] **Integration Tests**: Operation checks for scheduler, keyboard, sleep
--   [ ] **Boundary Condition Tests**: NULL input, buffer overflow countermeasures
--   [ ] **Long-Term Operation Test**: Stable multithreaded operation
+-   [ ] **ゼロ警告ビルド**: 全コンパイル警告の解消
+-   [ ] **統合テスト**: スケジューラ、キーボード、スリープの動作確認
+-   [ ] **境界条件テスト**: NULL 入力、バッファオーバーフロー対策
+-   [ ] **長期動作テスト**: 安定したマルチスレッド動作
 
-### ⚡ Performance & Safety
+### ⚡ パフォーマンス・安全性
 
--   [ ] **Interrupt Optimization**: Minimization of cli-sti duration
--   [ ] **Deadlock Prevention**: Proper interrupt management
--   [ ] **Memory Safety**: Buffer overflow countermeasures and NULL pointer checks
--   [ ] **Unified Error Handling**: Consistent error handling
+-   [ ] **割り込み最適化**: cli〜sti 期間の最小化
+-   [ ] **デッドロック防止**: 適切な割り込み管理
+-   [ ] **メモリ安全性**: バッファオーバーフロー対策と NULL ポインタチェック
+-   [ ] **エラー処理統一**: 一貫したエラーハンドリング
 
-### 📚 Documentation & Learning Value
+### 📚 ドキュメント・学習価値
 
--   [ ] **API Specifications**: Complete specification descriptions for all functions
--   [ ] **Architecture Explanation**: Evolution from Day 11 to Day 12
--   [ ] **Learning Guide**: Documentation for step-by-step understanding
--   [ ] **Troubleshooting**: Problem-solving procedures and debugging methods
+-   [ ] **API 仕様書**: 全関数の完全な仕様記述
+-   [ ] **アーキテクチャ説明**: Day 11 から 12 への進化過程
+-   [ ] **学習ガイド**: 段階的な理解のためのドキュメント
+-   [ ] **トラブルシューティング**: 問題解決手順とデバッグ方法
 
-## Troubleshooting
+## トラブルシューティング
 
--   **Keyboard input not responding**
-    -   Check IRQ1 mask settings
-    -   Check IDT entry 33 settings
--   **Garbled characters or data loss**
-    -   Check scancode table
-    -   Check for race conditions in the ring buffer
--   **System hang**
-    -   Check EOI sending timing
-    -   Check acquisition and release of scheduler lock
+-   **キーボード入力が反応しない**
 
-## 🎉 Day 12 Complete! - Congratulations on completing a practical OS!
+    -   IRQ1 マスクの設定確認
+    -   IDT の 33 番エントリ設定確認
 
-**Through the learning from Day 01 to 12, you have achieved the following:**
+-   **文字化けや取りこぼし**
 
-### ✅ Acquired Technical Skills
+    -   スキャンコードテーブル確認
+    -   リングバッファの競合状態チェック
 
--   **x86 Architecture**: Complete understanding from real mode to protected mode
--   **Operating System Design**: Implementation of a modular, practical OS
--   **Multithread Programming**: Preemptive scheduling and synchronization control
--   **Low-Level Hardware Control**: Interrupt, timer, keyboard, VGA control
--   **System Programming**: Integration of assembly and C, device driver development
--   **Software Quality**: Modularization, testing, debugging methods
+-   **システムハング**
+    -   EOI 送信タイミング確認
+    -   スケジューラロックの取得・解放確認
 
-### 🎯 Features of the Completed OS
+## 🎉 Day 12 完成！ - 実用 OS の完成おめでとうございます！
 
--   **32-bit x86 Protected Mode**: Utilization of modern CPU features
--   **Modular Architecture**: Design considering maintainability and extensibility
--   **Preemptive Multithreading**: Fair CPU time allocation and real-time response
--   **Interrupt-Driven I/O**: Asynchronous processing of keyboard and timer
--   **Comprehensive Keyboard Input**: Character/string input, backspace support
--   **Integrated Debug System**: Comprehensive debugging with VGA display and serial output
--   **Robustness and Error Handling**: Practical-level quality assurance
+**Day 01 から 12 までの学習を通じて、あなたは以下を達成しました:**
 
-### 🚀 Challenge for the Next Step
+### ✅ 習得した技術スキル
 
-**For further learning, based on the reference implementation:**
+-   **x86 アーキテクチャ**: リアルモードからプロテクトモードまでの完全理解
+-   **オペレーティングシステム設計**: モジュール化された実用的 OS 実装
+-   **マルチスレッドプログラミング**: プリエンプティブスケジューリングと同期制御
+-   **低レベルハードウェア制御**: 割り込み、タイマー、キーボード、VGA 制御
+-   **システムプログラミング**: アセンブリと C の統合、デバイスドライバ開発
+-   **ソフトウェア品質**: モジュール化、テスト、デバッグ手法
 
--   **Advanced Synchronization Primitives**: Semaphores, mutexes, condition variables
--   **Memory Management Expansion**: Dynamic memory allocation, virtual memory
--   **File System**: Implementation of FAT12/16 read/write functionality
--   **Network Functions**: Basic TCP/IP implementation
--   **GUI System**: Window manager and graphical interface
--   **Porting to Different Architectures**: ARM, RISC-V, x86_64
+### 🎯 完成した OS の特徴
 
-**The OS you created is a wonderful achievement that demonstrates an understanding of computer science fundamentals and serves as a starting point for further exploration. Continue to enjoy learning and development!** 🎓
+-   **32 ビット x86 プロテクトモード**: 現代的な CPU 機能の活用
+-   **モジュール化アーキテクチャ**: 保守性と拡張性を考慮した設計
+-   **プリエンプティブマルチスレッド**: 公平な CPU 時間配分とリアルタイム応答
+-   **割り込み駆動 I/O**: キーボード・タイマーの非同期処理
+-   **包括的キーボード入力**: 文字・文字列入力、バックスペース対応
+-   **統合デバッグシステム**: VGA 表示とシリアル出力による包括的デバッグ
+-   **堅牢性とエラー処理**: 実用レベルの品質保証
+
+### 🚀 次のステップへの挑戦
+
+**さらなる学習として参考実装を基に:**
+
+-   **高度な同期プリミティブ**: セマフォ、ミューテックス、条件変数
+-   **メモリ管理拡張**: 動的メモリアロケーション、仮想メモリ
+-   **ファイルシステム**: FAT12/16 の読み書き機能実装
+-   **ネットワーク機能**: 基本的な TCP/IP 実装
+-   **GUI システム**: ウィンドウマネージャーとグラフィカルインターフェース
+-   **異なるアーキテクチャへの移植**: ARM、RISC-V、x86_64
+
+**あなたの作った OS は、コンピュータサイエンスの基礎を理解し、さらなる探究への出発点となる素晴らしい成果です。引き続き学習と開発を楽しんでください！** 🎓

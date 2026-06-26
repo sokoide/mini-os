@@ -1,124 +1,118 @@
-# Day 11: Keyboard Input System (PS/2 + Ring Buffer) ⌨️
+# Day 11: キーボード入力システム（PS/2 + リングバッファ）⌨️
 
----
+## 本日のゴール
 
-🌐 Available languages:
+PS/2 キーボードからの非同期入力を処理し、リングバッファとブロッキング I/O を実装する。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## 背景
 
-## Today's Goal
+Day10 でスリープ機能を追加したが、OS 開発ではユーザー入力も重要な要素。本日は PS/2 キーボードから割り込み駆動で入力を処理し、リングバッファでデータを管理、ブロッキング API で効率的な入力を待機できるシステムを構築する。
 
-Process asynchronous input from PS/2 keyboard and implement ring buffer and blocking I/O.
+## 新しい概念
 
-## Background
+-   **PS/2**: キーボードと PC を接続するシリアルインターフェース。スキャンコードを送信し、IRQ1 割り込みを発生させる。
+-   **リングバッファ**: データを循環的に格納するバッファ。書き込み側と読み出し側が衝突せずに安全にデータをやり取りできる。
+-   **ブロッキング I/O**: 入力が得られるまでスレッドを待機状態にする I/O 処理方式。
 
-In Day 10, we added sleep functionality, but user input is also an important element in OS development. Today we'll build a system that processes input from PS/2 keyboard in interrupt-driven manner, manages data with ring buffer, and can efficiently wait for input with blocking API.
+## 学習内容
 
-## New Concepts
+-   PS/2 キーボードハードウェアインターフェース
+-   スキャンコード → ASCII 文字変換
+-   割り込み駆動の非同期入力処理
+-   スレッドセーフなリングバッファ実装
+-   I/O 待ちのためのブロッキング機構
+-   キーボード割り込み（IRQ1）とタイマー割り込み（IRQ0）の統合
 
--   **PS/2**: Serial interface connecting keyboard and PC. Sends scan codes and generates IRQ1 interrupts.
--   **Ring Buffer**: Buffer that stores data cyclically. Write side and read side can safely exchange data without collision.
--   **Blocking I/O**: I/O processing method that puts threads in waiting state until input is obtained.
+## タスクリスト
 
-## Learning Content
+-   [ ] PS/2 キーボードのハードウェアインターフェースを調査し、スキャンコードを理解する
+-   [ ] スキャンコードから ASCII 文字への変換テーブルを実装する
+-   [ ] リングバッファを実装し、非同期データの安全な格納を行う
+-   [ ] IRQ1 割り込みハンドラを実装し、キーボード入力を処理する
+-   [ ] PIC の IRQ1 マスクを解除し、キーボード割り込みを有効化する
+-   [ ] キーボード待ちスレッドのブロッキングとウェイクアップを実装する
+-   [ ] 警告のないクリーンなコードに修正
+-   [ ] QEMU でキーボード入力をテストし、非同期処理を確認する
 
--   PS/2 keyboard hardware interface
--   Scan code → ASCII character conversion
--   Interrupt-driven asynchronous input processing
--   Thread-safe ring buffer implementation
--   Blocking mechanism for I/O waiting
--   Integration of keyboard interrupt (IRQ1) and timer interrupt (IRQ0)
-
-## Task List
-
--   [ ] Research PS/2 keyboard hardware interface and understand scan codes
--   [ ] Implement conversion table from scan codes to ASCII characters
--   [ ] Implement ring buffer for safe storage of asynchronous data
--   [ ] Implement IRQ1 interrupt handler to process keyboard input
--   [ ] Remove PIC IRQ1 mask to enable keyboard interrupts
--   [ ] Implement blocking and wake-up for keyboard waiting threads
--   [ ] Fix to clean code without warnings
--   [ ] Test keyboard input in QEMU and verify asynchronous processing
-
-## Configuration
+## 構成
 
 ```
 boot/boot.s, boot/kernel_entry.s
-boot/interrupt.s        # IRQ0(timer) + IRQ1(keyboard)
-boot/context_switch.s   # Context switch + initial_context_switch
+boot/interrupt.s        # IRQ0(タイマー) + IRQ1(キーボード)
+boot/context_switch.s   # コンテキストスイッチ + initial_context_switch
 io.h, vga.h
-kernel.c                # Scheduler with keyboard input
+kernel.c                # キーボード入力付きスケジューラ
 Makefile
 ```
 
-## Keyboard Input Implementation Method
+## キーボード入力の実装方式
 
-In Day 11, keyboard input is implemented using **interrupt-driven method**. The following components work together:
+Day 11 では、**割り込み駆動方式**でキーボード入力を実装しています。以下のコンポーネントが連携して動作します：
 
-### Architecture Overview
+### アーキテクチャ概要
 
 ```
-⌨️  Key press
+⌨️  キー押下
      ↓
-🔌 PS/2 controller (scan code generation)
+🔌 PS/2コントローラ (スキャンコード生成)
      ↓
-⚡ IRQ1 interrupt generation
+⚡ IRQ1割り込み発生
      ↓
 🎯 keyboard_handler_c()
      ↓
-🔄 Scan code → ASCII conversion
+🔄 スキャンコード → ASCII変換
      ↓
-📋 Store in ring buffer
+📋 リングバッファに格納
      ↓
 🔓 unblock_keyboard_threads()
      ↓
-🏃 BLOCKED → READY thread return
+🏃 BLOCKED → READY スレッド復帰
 ```
 
-### Implemented Components
+### 実装されたコンポーネント
 
-1. **IRQ1 interrupt handler (`keyboard_handler_c`)**
+1. **IRQ1 割り込みハンドラ (`keyboard_handler_c`)**
 
-    - Read scan codes from PS/2 controller
-    - Convert to ASCII characters and store in ring buffer
-    - Return keyboard waiting threads to READY state
+    - PS/2 コントローラからスキャンコードを読み取り
+    - ASCII 文字に変換してリングバッファに格納
+    - キーボード待ちスレッドを READY 状態に復帰
 
-2. **Ring buffer (`kbuf`)**
+2. **リングバッファ (`kbuf`)**
 
-    - 128-byte circular buffer managing asynchronous input
-    - `kbuf_push`: Character storage from interrupt handler
-    - `kbuf_is_empty/full`: Buffer state checking
+    - 128 バイトの循環バッファで非同期入力を管理
+    - `kbuf_push`：割り込みハンドラからの文字格納
+    - `kbuf_is_empty/full`：バッファ状態の確認
 
-3. **Thread blocking mechanism**
+3. **スレッドブロッキング機構**
 
-    - `BLOCK_REASON_KEYBOARD`: Keyboard input waiting
-    - `unblock_keyboard_threads`: Batch wake-up on input
+    - `BLOCK_REASON_KEYBOARD`：キーボード入力待ち
+    - `unblock_keyboard_threads`：入力時の一括ウェイクアップ
 
-4. **Demo threads**
-    - `threadA/B`: Counter display and timer-based operation
-    - `idle_thread`: CPU halt when all threads are blocked
+4. **デモスレッド**
+    - `threadA/B`：カウンタ表示とタイマーベースの動作
+    - `idle_thread`：全スレッドがブロック時の CPU 休止
 
-## Integration with Scheduler
+## スケジューラとの連携
 
-Day 11 implementation is based on the robust scheduling method introduced in Day 10:
+Day 11 の実装は、Day 10 で導入された堅牢なスケジューリング方式を基盤としています：
 
--   **Role of `idle_thread`**: CPU halt when no executable threads exist
--   **Generic blocking mechanism**: Unified processing of timer waiting and keyboard waiting
--   **Efficient interrupt processing**: Cooperative operation of IRQ0 (timer) and IRQ1 (keyboard)
+-   **`idle_thread`の役割**: 実行可能なスレッドがない場合の CPU 休止
+-   **汎用ブロッキング機構**: タイマー待機とキーボード待機の統一的処理
+-   **効率的な割り込み処理**: IRQ0（タイマー）と IRQ1（キーボード）の協調動作
 
-## Implementation Guide
+## 実装ガイド
 
-### Complete Implementation Code
+### 完全実装コード
 
-**Ring Buffer Implementation**
+**リングバッファ実装**
 
 ```c
-// Keyboard buffer (ring buffer)
+// キーボードバッファ（リングバッファ）
 #define KBUF_SIZE 128
 static volatile char kbuf[KBUF_SIZE];
 static volatile uint32_t khead = 0, ktail = 0;
 
-// Buffer state check
+// バッファの状態チェック
 static inline int kbuf_is_empty(void) {
     return khead == ktail;
 }
@@ -127,20 +121,20 @@ static inline int kbuf_is_full(void) {
     return ((khead + 1) % KBUF_SIZE) == ktail;
 }
 
-// Add character to buffer (called from interrupt handler)
+// 文字をバッファに追加（割り込みハンドラから呼ばれる）
 static void kbuf_push(char c) {
     uint32_t nh = (khead + 1) % KBUF_SIZE;
-    if (nh != ktail) {  // Only when buffer is not full
+    if (nh != ktail) {  // バッファが満杯でない場合のみ
         kbuf[khead] = c;
         khead = nh;
     }
 }
 ```
 
-**Scan Code Conversion Table**
+**スキャンコード変換テーブル**
 
 ```c
-// Scan code → ASCII conversion table for US keyboard layout
+// US配列キーボード用スキャンコード→ASCII変換テーブル
 static const char scancode_map[128] = {
     0,   27,   '1',  '2', '3',  '4', '5', '6', '7', '8', '9', '0', '-',
     '=', '', '	', 'q', 'w',  'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
@@ -150,74 +144,72 @@ static const char scancode_map[128] = {
     '.', '/',  0,    '*', 0,    ' ', 0,   0,   0,   0,   0,   0,   0,
     0,   0,    0,    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,
     0,   0,    0,    0,   0,    0,   0,   0,   0,   0,   0,   0,
-    // Remaining initialized to 0 (F1-F10, numeric keypad, etc.)
+    // 残りは0で初期化（F1-F10、数字キーパッド等）
     [60 ... 127] = 0
 };
 ```
 
-**Keyboard Interrupt Handler**
+**キーボード割り込みハンドラ**
 
 ```c
-// IRQ1: Keyboard
+// IRQ1: キーボード
 void keyboard_handler_c(void) {
-    // Notify PIC of interrupt processing completion
+    // PIC に割り込み処理完了を通知
     outb(PIC1_CMD, PIC_EOI);
 
-    // Check keyboard data read availability
+    // キーボードデータの読み取り可能性をチェック
     uint8_t status = inb(PS2_STAT);
     if (!(status & 0x01)) {
-        serial_puts("KEYBOARD: Interrupt fired but no data available
-");
+        serial_puts("KEYBOARD: Interrupt fired but no data available\n");
         return;
     }
 
-    // Read scan code
+    // スキャンコードを読み取り
     uint8_t scancode = inb(PS2_DATA);
 
-    // Ignore key release operations (break code)
+    // キー離す操作は無視（break code）
     if (scancode & 0x80) {
         return;
     }
 
-    // Convert scan code to ASCII character
+    // スキャンコードをASCII文字に変換
     char ch = (scancode < 128) ? scancode_map[scancode] : 0;
 
     if (ch != 0) {
-        // Store in buffer
+        // バッファに格納
         kbuf_push(ch);
 
-        // Immediately output to both VGA and serial
+        // 即座にVGAとシリアルの両方に出力
         __asm__ volatile("cli");
 
-        // VGA output - display to the right of "Keyboard Input:"
+        // VGA出力 - "Keyboard Input:" の右側に表示
         vga_move_cursor(16, 6);
         vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
         vga_putc(ch);
-        vga_putc(' ');  // Clear old character
+        vga_putc(' ');  // 古い文字をクリア
 
-        // Serial output
+        // シリアル出力
         serial_putc(ch);
 
         __asm__ volatile("sti");
 
-        // Debug output (day12_completed format)
+        // デバッグ出力（day12_completed形式）
         serial_puts("KEY: ");
         serial_putc(ch);
         serial_puts(" (");
         serial_puthex(scancode);
-        serial_puts(")
-");
+        serial_puts(")\n");
 
-        // Return input waiting threads to READY (if any)
+        // 入力待ちスレッドをREADYへ（もしあれば）
         unblock_keyboard_threads();
     }
 }
 ```
 
-**Keyboard Thread Unblocking**
+**キーボードスレッドのアンブロック**
 
 ```c
-// Return all keyboard waiting threads to READY state
+// キーボード待ちスレッドをすべてREADY状態に戻す
 static void unblock_keyboard_threads(void) {
     asm volatile("cli");
     kernel_context_t* ctx = get_kernel_context();
@@ -227,14 +219,14 @@ static void unblock_keyboard_threads(void) {
     while (current) {
         thread_t* next = current->next_blocked;
         if (current->block_reason == BLOCK_REASON_KEYBOARD) {
-            // Remove from BLOCKED list
+            // BLOCKEDリストから削除
             if (prev) {
                 prev->next_blocked = current->next_blocked;
             } else {
                 ctx->blocked_thread_list = current->next_blocked;
             }
 
-            // Return to READY list
+            // READYリストに復帰
             current->state = THREAD_READY;
             current->block_reason = BLOCK_REASON_NONE;
             current->next_blocked = NULL;
@@ -248,17 +240,17 @@ static void unblock_keyboard_threads(void) {
 }
 ```
 
-**Demo Thread Implementation**
+**デモスレッド実装**
 
 ```c
-// Idle thread
+// アイドルスレッド
 static void idle_thread(void) {
     for (;;) {
-        asm volatile("hlt");  // Halt CPU
+        asm volatile("hlt");  // CPUを休止
     }
 }
 
-// Thread A (fast counter)
+// スレッドA（高速カウンタ）
 static void threadA(void) {
     serial_puts("threadA start
 ");
@@ -270,18 +262,18 @@ static void threadA(void) {
         vga_set_color(VGA_YELLOW, VGA_BLACK);
         vga_puts("A: ");
         vga_putnum(self->counter);
-        vga_puts("        ");  // Clear previous number
+        vga_puts("        ");  // 前の数値をクリア
         __asm__ volatile("sti");
 
         if ((self->counter & 0x1FF) == 0)
             serial_puts("threadA alive
 ");
 
-        sleep(50);  // Wait 500ms
+        sleep(50);  // 500ms待機
     }
 }
 
-// Thread B (medium speed counter)
+// スレッドB（中速カウンタ）
 static void threadB(void) {
     serial_puts("threadB start
 ");
@@ -293,82 +285,82 @@ static void threadB(void) {
         vga_set_color(VGA_CYAN, VGA_BLACK);
         vga_puts("B: ");
         vga_putnum(self->counter);
-        vga_puts("        ");  // Clear previous number
+        vga_puts("        ");  // 前の数値をクリア
         __asm__ volatile("sti");
 
         if ((self->counter & 0x1FF) == 0)
             serial_puts("threadB alive
 ");
 
-        sleep(75);  // Wait 750ms
+        sleep(75);  // 750ms待機
     }
 }
 ```
 
-**PIC Configuration and IDT Initialization**
+**PIC 設定と IDT 初期化**
 
 ```c
-// PIC remapping (IRQ0-15 → 32-47)
+// PICの再マッピング（IRQ0-15 → 32-47）
 static void remap_pic(void) {
     uint8_t a1 = inb(PIC1_DATA), a2 = inb(PIC2_DATA);
 
-    outb(PIC1_CMD, 0x11);   // ICW1: 8086 mode, cascade
+    outb(PIC1_CMD, 0x11);   // ICW1: 8086モード、カスケード
     outb(PIC2_CMD, 0x11);
-    outb(PIC1_DATA, 0x20);  // ICW2: master PIC → 32-39
-    outb(PIC2_DATA, 0x28);  // ICW2: slave PIC → 40-47
-    outb(PIC1_DATA, 0x04);  // ICW3: slave on IRQ2
-    outb(PIC2_DATA, 0x02);  // ICW3: cascade ID=2
-    outb(PIC1_DATA, 0x01);  // ICW4: 8086 mode
+    outb(PIC1_DATA, 0x20);  // ICW2: マスタPIC → 32-39
+    outb(PIC2_DATA, 0x28);  // ICW2: スレーブPIC → 40-47
+    outb(PIC1_DATA, 0x04);  // ICW3: スレーブはIRQ2
+    outb(PIC2_DATA, 0x02);  // ICW3: カスケードID=2
+    outb(PIC1_DATA, 0x01);  // ICW4: 8086モード
     outb(PIC2_DATA, 0x01);
 
-    outb(PIC1_DATA, a1);    // Restore original mask
+    outb(PIC1_DATA, a1);    // 元のマスクに戻す
     outb(PIC2_DATA, a2);
 }
 
-// IDT configuration
+// IDT設定
 static void idt_init(void) {
-    // Initialize all entries to 0
+    // 全エントリを0で初期化
     for (int i = 0; i < 256; i++)
         set_gate(i, 0);
 
-    // Exception handlers
+    // 例外ハンドラ
     set_gate(0, (uint32_t)isr0);   // Divide by zero
     set_gate(3, (uint32_t)isr3);   // Breakpoint
     set_gate(6, (uint32_t)isr6);   // Invalid opcode
     set_gate(13, (uint32_t)isr13); // General protection fault
     set_gate(14, (uint32_t)isr14); // Page fault
 
-    // Interrupt handlers
+    // 割り込みハンドラ
     set_gate(32, (uint32_t)timer_interrupt_handler);    // IRQ0
     set_gate(33, (uint32_t)keyboard_interrupt_handler); // IRQ1
 
-    // Set IDTR register
+    // IDTRレジスタに設定
     idtr.limit = sizeof(idt) - 1;
     idtr.base = (uint32_t)&idt[0];
     lidt(&idtr);
 }
 
-// Main initialization
+// メイン初期化
 void kmain(void) {
-    // Basic initialization
+    // 基本初期化
     serial_init();
     vga_init();
     init_kernel_context();
 
-    // Interrupt system initialization
+    // 割り込みシステム初期化
     remap_pic();
-    set_masks(0xFC, 0xFF);  // Enable only IRQ0,1 (0xFC = 11111100)
+    set_masks(0xFC, 0xFF);  // IRQ0,1のみ有効（0xFC = 11111100）
     idt_init();
     init_pit_100hz();
 
-    // PS/2 keyboard initialization
+    // PS/2キーボード初期化
     ps2_keyboard_init();
 
     serial_puts("PIC/IDT/PIT/PS2 ready, enabling interrupts
 ");
     __asm__ volatile("sti");
 
-    // Thread creation
+    // スレッド作成
     thread_t *th1, *th2, *tidle;
     create_thread(threadA, 50, 2, &th1);
     create_thread(threadB, 75, 3, &th2);
@@ -379,41 +371,41 @@ void kmain(void) {
 }
 ```
 
-## Implementation Key Points
+## 実装の要点
 
-**Ring buffer design:**
+**リングバッファ設計:**
 
--   2-pointer management of `head` (write) and `tail` (read)
--   Safe asynchronous transfer between interrupt handler and application
+-   `head`（書き込み）と`tail`（読み取り）の 2 ポインタ管理
+-   割り込みハンドラとアプリケーション間の安全な非同期転送
 
-**IRQ1 interrupt handler processing order:**
+**IRQ1 割り込みハンドラの処理順序:**
 
-1. Send EOI to PIC (most important: enable next interrupt reception)
-2. Check PS/2 status (data ready check)
-3. Read scan code (port 0x60)
-4. ASCII character conversion (using scan code table)
-5. Store in ring buffer
-6. Debug output (VGA + serial)
-7. Wake-up blocked threads
+1. PIC に EOI 送信（最重要：次の割り込み受信可能化）
+2. PS/2 ステータス確認（データ準備完了チェック）
+3. スキャンコード読み取り（ポート 0x60）
+4. ASCII 文字変換（スキャンコードテーブル使用）
+5. リングバッファに格納
+6. デバッグ出力（VGA + シリアル）
+7. ブロック中スレッドのウェイクアップ
 
-## Troubleshooting
+## トラブルシューティング
 
--   **No input at all**
+-   **入力が全く来ない**
 
-    -   Verify PIC IRQ1 mask (bit 1) removal
-    -   Verify IDT entry 33 (IRQ1) configuration
+    -   PIC の IRQ1 マスク（bit 1）解除確認
+    -   IDT の 33 番エントリ（IRQ1）設定確認
 
--   **System hang**
-    -   Verify EOI send timing (execute at beginning of handler)
-    -   Prevent scheduler re-entry during interrupts
+-   **システムハング**
+    -   EOI 送信タイミング確認（ハンドラ最初で実行）
+    -   割り込み中のスケジューラ再入防止
 
-## Understanding Check
+## 理解度チェック
 
-1. Why was `threadKpoll` removed?
-2. What's the difference between interrupt-driven and polling methods?
-3. Why is ring buffer necessary?
-4. What's the role of `unblock_keyboard_threads`?
+1. なぜ`threadKpoll`を削除したのか？
+2. 割り込み駆動方式とポーリング方式の違いは？
+3. リングバッファが必要な理由は？
+4. `unblock_keyboard_threads`の役割は？
 
-## Next Steps
+## 次のステップ
 
-In Day 12, we'll integrate all the features implemented so far and improve them into a modularized structure. We'll also implement more advanced keyboard features (string input, backspace processing).
+Day 12 では、これまでの機能を統合し、モジュール化された構造に改良します。また、より高度なキーボード機能（文字列入力、バックスペース処理）も実装します。

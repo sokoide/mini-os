@@ -1,86 +1,80 @@
-# Day 09: Preemptive Multithreading (Round-Robin) 🔀
+# Day 09: プリエンプティブ・マルチスレッド（ラウンドロビン）🔀
 
----
+## 本日のゴール
 
-🌐 Available languages:
+タイマ割り込みを使ってプリエンプティブ・マルチスレッドを実装し、OS が自動的にスレッドを切り替えるラウンドロビンスケジューラを作成する。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## 背景
 
-## Today's Goal
+Day8 でコンテキストスイッチを実装したが、スレッド切り替えが手動だった。本日はタイマー割り込みを活用して OS が自動的にスレッドを切り替えるプリエンプティブスケジューリングを実装し、真のマルチタスク環境を構築する。
 
-Implement preemptive multithreading using timer interrupts and create a round-robin scheduler that automatically switches threads.
+## 新しい概念
 
-## Background
+-   **プリエンプティブスケジューリング**: OS がタイマー割り込みを使って強制的にスレッドを切り替える方式。協調的（スレッドが自発的に CPU を明け渡す）とは対照的で、リアルタイム応答と公平性を保証する。
 
-In Day 8, we implemented context switching but thread switching was manual. Today we'll implement preemptive scheduling using timer interrupts where the OS automatically switches threads, creating a true multitasking environment.
+## 学習内容
 
-## New Concepts
+-   タイムスライス（例: 10ms×N）の設計
+-   READY 循環リストの回転と次スレッド選択
+-   IRQ0 ハンドラ内でのスケジューリングと EOI
+-   現在スレッドの `esp` 保存と次スレッドへの切替
+-   PIC/PIT/IDT の初期化と設定
 
--   **Preemptive Scheduling**: A method where the OS forcibly switches threads using timer interrupts. This contrasts with cooperative scheduling (where threads voluntarily yield the CPU) and guarantees real-time response and fairness.
+## タスクリスト
 
-## Learning Content
+-   [ ] PIC を再マッピングし、IRQ0 を IDT の 32 番に割り当てる
+-   [ ] PIT を 100Hz に初期化して定期的なタイマー割り込みを設定する
+-   [ ] interrupt.s にタイマー割り込みハンドラを実装する
+-   [ ] kernel.c でラウンドロビンスケジューラを実装し、READY リストを管理する
+-   [ ] タイムスライス（10tick）ごとに schedule()を呼び出してスレッド切り替えを行う
+-   [ ] EOI を適切なタイミングで送信して割り込みを継続する
+-   [ ] デモスレッドを作成し、プリエンプティブ切り替えを確認する
+-   [ ] QEMU で動作確認し、複数のスレッドが交互に実行されることを確認する
 
--   Time slice design (e.g., 10ms × N)
--   READY circular list rotation and next thread selection
--   Scheduling and EOI within IRQ0 handler
--   Saving current thread's `esp` and switching to next thread
--   PIC/PIT/IDT initialization and configuration
-
-## Task List
-
--   [ ] Remap PIC and assign IRQ0 to IDT entry 32
--   [ ] Initialize PIT to 100Hz for periodic timer interrupts
--   [ ] Implement timer interrupt handler in interrupt.s
--   [ ] Implement round-robin scheduler in kernel.c and manage READY list
--   [ ] Call schedule() every time slice (10 ticks) to perform thread switching
--   [ ] Send EOI at appropriate timing to continue interrupts
--   [ ] Create demo threads and verify preemptive switching
--   [ ] Verify operation in QEMU, confirming multiple threads execute alternately
-
-## Configuration
+## 構成
 
 ```
 boot/boot.s, boot/kernel_entry.s
-boot/interrupt.s        # IRQ0 handler and ISR stubs
-boot/context_switch.s   # Context switch + initial_context_switch
+boot/interrupt.s        # IRQ0ハンドラとISRスタブ
+boot/context_switch.s   # コンテキストスイッチ + initial_context_switch
 io.h, vga.h
-kernel.c                # Scheduler + IRQ0 integration
+kernel.c                # スケジューラ＋IRQ0連携
 Makefile
 ```
 
-## Implementation Guide
+## 実装ガイド
 
-### Timer Interrupt Scheduling Mechanism
+### タイマー割り込みスケジューリングの仕組み
 
 ```
-🕒 Timer Interrupt (IRQ0) 100Hz
+🕒 タイマー割り込み (IRQ0) 100Hz
      ↓
 📥 timer_interrupt_handler (Assembly)
      ↓
-🔧 timer_handler_c() (C language)
+🔧 timer_handler_c() (C言語)
      ↓
-✅ eoi_master()         # Send EOI first (important)
+✅ eoi_master()         # 先にEOI送信（重要）
      ↓
-📈 tick++               # Update timer count
+📈 tick++               # タイマーカウント更新
      ↓
-⏰ Time slice determination
+⏰ タイムスライス判定
      ↓
-🔄 schedule()          # Thread switch when needed
+🔄 schedule()          # 必要時にスレッド切替
      ↓
-🏃 context_switch()    # Save registers → restore
+🏃 context_switch()    # レジスタ保存→復元
 ```
 
-**Important: EOI Sending Timing**
+**重要：EOI 送信タイミング**
 
--   Send EOI **before** `schedule()`
--   Reason: Enable reception of next interrupt during thread switching
+-   `schedule()`の**前に**EOI 送信
+-   理由：スレッド切替中も次の割り込みを受信可能にする
 
-### Complete Implementation Code
+### 完全実装コード
 
 **boot/interrupt.s**
 
 ```assembly
-; Day 09 Complete Version - Exception ISR + IRQ0 stub with common handler (32-bit)
+; Day 09 完成版 - 例外ISR + IRQ0スタブと共通ハンドラ（32ビット）
 [bits 32]
 
 %macro ISR_NOERR 1
@@ -101,7 +95,7 @@ isr%1:
 extern isr_handler_c
 extern timer_handler_c
 
-; Common handler for exceptions (no context switch)
+; 例外用の共通ハンドラ（コンテキストスイッチしない）
 isr_common:
   pusha
   cld
@@ -111,44 +105,44 @@ isr_common:
   add esp, 4
   popa
   add esp, 8
-  sti                   ; Explicitly enable interrupts
+  sti                   ; 明示的に割り込み有効化
   iretd
 
-; Timer interrupt dedicated handler (context switch compatible)
+; タイマー割り込み専用ハンドラ（コンテキストスイッチ対応）
 global timer_interrupt_handler
 timer_interrupt_handler:
-    ; Save all general-purpose registers to stack
-    pusha                   ; Save EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI
+    ; 全汎用レジスタをスタックに保存
+    pusha                   ; EAX, ECX, EDX, EBX, ESP, EBP, ESI, EDI を保存
 
-    ; Save segment registers as well
+    ; セグメントレジスタも保存
     push ds
     push es
     push fs
     push gs
 
-    ; Switch to kernel data segment
-    mov ax, 0x10            ; Data segment selector
+    ; カーネルのデータセグメントに切り替え
+    mov ax, 0x10            ; データセグメントセレクタ
     mov ds, ax
     mov es, ax
     mov fs, ax
     mov gs, ax
 
-    ; Call timer handler written in C
-    ; [IMPORTANT] Here scheduler operates and current_thread may change
+    ; C言語で書かれたタイマーハンドラを呼び出し
+    ; 【重要】ここでスケジューラが動作し、current_threadが変更される可能性
     call timer_handler_c
 
-    ; Restore segment registers
+    ; セグメントレジスタを復元
     pop gs
     pop fs
     pop es
     pop ds
 
-    ; Restore general-purpose registers
-    ; [IMPORTANT] Registers restored here become those of another thread
-    ; if thread was switched in timer_handler_c!
+    ; 汎用レジスタを復元
+    ; 【重要】ここで復元されるレジスタは、timer_handler_c内で
+    ; スレッドが切り替わった場合、別のスレッドのレジスタになる！
     popa
 
-    ; End interrupt (return to original processing with IRET)
+    ; 割り込み終了（IRETで元の処理に戻る）
     iret
 
 ISR_NOERR 0
@@ -158,19 +152,19 @@ ISR_ERR   13
 ISR_ERR   14
 ```
 
-**boot/context_switch.s (Day09 Version)**
+**boot/context_switch.s（Day09 版）**
 
 ```assembly
-; Day 09 Complete Version - Context Switch (32-bit)
+; Day 09 完成版 - コンテキストスイッチ（32ビット）
 [bits 32]
 
 ; void context_switch(uint32_t* old_esp, uint32_t* new_esp)
-; Standard context switch - save and restore register state
+; 標準的なコンテキストスイッチ - レジスタ状態を保存・復元
 global context_switch
 context_switch:
-  ; Save current register state
-  ; Save order: EFLAGS → EBP → EDI → ESI → EDX → ECX → EBX → EAX
-  pushfd                    ; Save EFLAGS (including IF)
+  ; 現在のレジスタ状態を保存
+  ; 保存順序: EFLAGS → EBP → EDI → ESI → EDX → ECX → EBX → EAX
+  pushfd                    ; EFLAGS を保存（IF含む）
   push ebp
   push edi
   push esi
@@ -179,15 +173,15 @@ context_switch:
   push ebx
   push eax
 
-  ; Save current ESP to old_esp
-  mov  eax, [esp+36]        ; old_esp pointer (8*4 + 4)
-  mov  [eax], esp           ; Save current ESP
+  ; 現在のESPを old_esp に保存
+  mov  eax, [esp+36]        ; old_esp ポインタ (8*4 + 4)
+  mov  [eax], esp           ; 現在のESPを保存
 
-  ; Switch to new ESP
-  mov  esp, [esp+40]        ; new_esp value (8*4 + 8)
+  ; 新しいESPへ切り替え
+  mov  esp, [esp+40]        ; new_esp 値 (8*4 + 8)
 
-  ; Restore new thread's register state
-  ; Restore order: EAX → EBX → ECX → EDX → ESI → EDI → EBP → EFLAGS
+  ; 新しいスレッドのレジスタ状態を復元
+  ; 復元順序: EAX → EBX → ECX → EDX → ESI → EDI → EBP → EFLAGS
   pop eax
   pop ebx
   pop ecx
@@ -195,20 +189,20 @@ context_switch:
   pop esi
   pop edi
   pop ebp
-  popfd                     ; Restore EFLAGS with interrupt enable state (IF restored)
+  popfd                     ; 割り込み有効状態のEFLAGSを復元（IFも元通り）
 
-  ; Return to caller (new thread's continuation point / first time at function start with ret)
+  ; 呼び出し元に戻る（新スレッド側の継続点／初回は関数先頭にret）
   ret
 
-; Initial context switch (for first thread only)
+; 初回コンテキストスイッチ（最初のスレッド専用）
 ; initial_context_switch(new_esp)
 global initial_context_switch
 initial_context_switch:
-  ; Argument: [esp+4] = new_esp (ESP of destination thread)
+  ; 引数: [esp+4] = new_esp（切替先スレッドのESP）
   mov eax, [esp+4]
   mov esp, eax
 
-  ; Restore registers/EFLAGS pushed to thread initial stack
+  ; スレッド初期スタックに積んだレジスタ/EFLAGSを復元
   pop eax
   pop ebx
   pop ecx
@@ -216,23 +210,23 @@ initial_context_switch:
   pop esi
   pop edi
   pop ebp
-  popfd                  ; Restore including interrupt state
+  popfd                  ; 割り込み状態を含めて復元
 
-  ; Transition to function address at stack top
-  pop eax                ; Get function address
-  jmp eax                ; Direct jump (no return address needed)
+  ; スタックトップの関数アドレスへ遷移
+  pop eax                ; 関数アドレスを取得
+  jmp eax                ; 直接ジャンプ（戻り先は不要）
 ```
 
-**kernel.c (Complete Implementation)**
+**kernel.c（完全実装）**
 
 ```c
-// Day 09 Complete Version - Preemptive Round-Robin (Simple)
+// Day 09 完成版 - プリエンプティブ・ラウンドロビン（簡易）
 #include <stdint.h>
 
 #include "io.h"
 #include "vga.h"
 
-// --- Simple VGA ---
+// --- VGA 簡易 ---
 static volatile uint16_t* const VGA_MEM = (uint16_t*)0xB8000;
 static uint16_t cx, cy;
 static uint8_t col = 0x0F;
@@ -258,8 +252,7 @@ void vga_clear(void) {
     vga_move_cursor(0, 0);
 }
 void vga_putc(char c) {
-    if (c == '
-') {
+    if (c == '\n') {
         cx = 0;
         cy++;
         vga_move_cursor(cx, cy);
@@ -294,7 +287,7 @@ void vga_init(void) {
     vga_clear();
 }
 
-// --- Serial (COM1) Debug ---
+// --- シリアル（COM1）デバッグ ---
 #define COM1 0x3F8
 static inline void serial_init(void) {
     outb(COM1 + 1, 0x00);
@@ -312,10 +305,8 @@ static inline void serial_putc(char c) {
 }
 static inline void serial_puts(const char* s) {
     while (*s) {
-        if (*s == '
-')
-            serial_putc('
-');
+        if (*s == '\n')
+            serial_putc('\r');
         serial_putc(*s++);
     }
 }
@@ -324,7 +315,7 @@ static inline void serial_puthex(uint32_t v) {
     for (int i = 7; i >= 0; i--) serial_putc(h[(v >> (i * 4)) & 0xF]);
 }
 
-// --- Thread/Scheduler ---
+// --- スレッド/スケジューラ ---
 typedef struct thread {
     uint32_t stack[1024];
     uint32_t esp;
@@ -337,7 +328,7 @@ extern void initial_context_switch(uint32_t new_esp);
 
 static thread_t *current = 0, *ready = 0;
 static volatile uint32_t tick = 0;
-static uint32_t slice_ticks = 10;  // About 100ms at 100Hz
+static uint32_t slice_ticks = 10;  // 100Hzで約100ms
 
 static void ready_push(thread_t* t) {
     if (!t)
@@ -356,11 +347,11 @@ static void ready_push(thread_t* t) {
 static void init_stack(thread_t* t, void (*func)(void)) {
     uint32_t* sp = &t->stack[1024];
 
-    // Correct thread initialization - stack layout compatible with switch_context
-    // Stack according to order restored by switch_context
+    // 正しいスレッド初期化 - switch_contextと互換性のあるスタックレイアウト
+    // switch_context で復元される順序に合わせて積む
     *--sp =
-        (uint32_t)func;  // Function address (becomes ret destination on first thread execution)
-    *--sp = 0x00000202;  // EFLAGS (IF=1, reserved bit=1)
+        (uint32_t)func;  // 関数アドレス（最初のスレッド実行時にret先になる）
+    *--sp = 0x00000202;  // EFLAGS（IF=1, reserved bit=1）
     *--sp = 0;           // EBP
     *--sp = 0;           // EDI
     *--sp = 0;           // ESI
@@ -448,7 +439,7 @@ static void idt_init(void) {
     lidt(&idtr);
 }
 
-// Common IRQ handler
+// IRQ共通ハンドラ
 struct isr_stack {
     uint32_t regs[8];
     uint32_t int_no;
@@ -459,34 +450,30 @@ static uint32_t cur_esp = 0;
 static uint32_t last_slice_tick = 0;
 
 static void schedule(void) {
-    serial_puts("schedule() called
-");
+    serial_puts("schedule() called\n");
 
     if (!ready || !current) {
-        serial_puts("schedule: no ready or current thread
-");
+        serial_puts("schedule: no ready or current thread\n");
         return;
     }
 
-    thread_t* next = ready->next;  // Current next candidate
+    thread_t* next = ready->next;  // 現在の次候補
     serial_puts("schedule: next=");
     serial_puthex((uint32_t)next);
-    serial_puts("
-");
+    serial_puts("\n");
 
     if (next == current) {
-        serial_puts("schedule: next==current, no switch
-");
+        serial_puts("schedule: next==current, no switch\n");
         return;
     }
 
-    // Advance ready pointer to next thread
+    // readyポインタを次のスレッドに進める
     ready = ready->next;
 
     thread_t* prev = current;
     current = next;
 
-    // Debug: output current/next threads and ESP
+    // デバッグ: 現在/次スレッドとESPを出力
     serial_puts("SCHED prev=");
     serial_puthex((uint32_t)prev);
     serial_puts(" next=");
@@ -495,12 +482,11 @@ static void schedule(void) {
     serial_puthex(prev->esp);
     serial_puts(" nextESP=");
     serial_puthex(current->esp);
-    serial_puts("
-");
+    serial_puts("\n");
     context_switch(&prev->esp, current->esp);
 }
 
-// Dedicated timer interrupt handler
+// 専用のタイマー割り込みハンドラ
 void timer_handler_c(void) {
     // EOI must be sent BEFORE schedule() - critical for continued timer
     // interrupts
@@ -508,35 +494,30 @@ void timer_handler_c(void) {
 
     tick++;
     if ((tick & 0x3F) == 0) {
-        serial_puts("TICK
-");
+        serial_puts("TICK\n");
     }
     if ((tick - last_slice_tick) >= slice_ticks) {
         last_slice_tick = tick;
-        serial_puts("Timer calling schedule
-");
+        serial_puts("Timer calling schedule\n");
         schedule();
     }
 }
 
 void isr_handler_c(struct isr_stack* f) {
-    // Simple exception display (also output to serial)
+    // 例外簡易表示（シリアルにも出力）
     serial_puts("EXC vec=");
     serial_puthex(f->int_no);
-    serial_puts("
-");
+    serial_puts("\n");
     vga_set_color(VGA_LIGHT_RED, VGA_BLACK);
     vga_puts("[EXC] vec=");
     vga_putnum(f->int_no);
-    vga_putc('
-');
+    vga_putc('\n');
 }
 
-// Demo threads
+// デモスレッド
 static thread_t th1, th2;
 static void threadA(void) {
-    serial_puts("threadA start
-");
+    serial_puts("threadA start\n");
     for (;;) {
         ++th1.cnt;
         if ((th1.cnt & 0xFFFF) == 0) {
@@ -545,15 +526,13 @@ static void threadA(void) {
             vga_puts("A:"), vga_putnum(th1.cnt), vga_puts("   ");
         }
         if ((th1.cnt & 0xFFFFFF) == 0) {
-            serial_puts("threadA alive
-");
+            serial_puts("threadA alive\n");
         }
     }
 }
 
 static void threadB(void) {
-    serial_puts("threadB start
-");
+    serial_puts("threadB start\n");
     for (;;) {
         ++th2.cnt;
         if ((th2.cnt & 0xFFFF) == 0) {
@@ -564,20 +543,17 @@ static void threadB(void) {
             vga_puts("   ");
         }
         if ((th2.cnt & 0xFFFFFF) == 0) {
-            serial_puts("threadB alive
-");
+            serial_puts("threadB alive\n");
         }
     }
 }
 
 void kmain(void) {
     serial_init();
-    serial_puts("D09 kmain begin
-");
+    serial_puts("D09 kmain begin\n");
     vga_init();
-    vga_puts("Day 09: Preemptive RR
-");
-    // Thread preparation
+    vga_puts("Day 09: Preemptive RR\n");
+    // スレッド準備
     th1.row = 10;
     th2.row = 11;
     th1.cnt = th2.cnt = 0;
@@ -586,60 +562,58 @@ void kmain(void) {
     init_stack(&th2, threadB);
     ready_push(&th1);
     ready_push(&th2);
-    current = &th1;  // First current
+    current = &th1;  // 最初のcurrent
 
     remap_pic();
     set_masks(0xFE, 0xFF);
     idt_init();
     init_pit_100hz();
-    serial_puts("PIC/IDT/PIT ready, sti
-");
+    serial_puts("PIC/IDT/PIT ready, sti\n");
     __asm__ volatile("sti");
-    // To first thread (start from initial stack, don't use start_first)
+    // 最初のスレッドへ（初期スタックから開始、start_first は使わない）
     serial_puts("START first thread esp=");
     serial_puthex(current->esp);
-    serial_puts("
-");
+    serial_puts("\n");
     initial_context_switch(current->esp);
 }
 ```
 
-### Implementation Points
+### 実装のポイント
 
-**Scheduler Design**
+**スケジューラ設計**
 
--   **READY Circular List**: Create circular list with `ready_push()`
--   **Round-Robin**: Advance `ready` pointer by 1 in `schedule()`
--   **Time Slice**: Switch threads every 10 ticks (about 100ms)
+-   **READY 循環リスト**: `ready_push()`で循環リスト作成
+-   **ラウンドロビン**: `schedule()`で`ready`ポインタを 1 つ進める
+-   **タイムスライス**: 10tick（約 100ms）でスレッド切替
 
-**Timer Interrupt Processing**
+**タイマー割り込み処理**
 
--   **EOI Send Timing**: Always execute before `schedule()`
--   **Interrupt Continuation**: Receive next interrupt during thread switching
--   **Debug Output**: "TICK" message every 64 ticks to confirm operation
+-   **EOI 送信タイミング**: `schedule()`の前に必ず実行
+-   **割り込み継続**: スレッド切替中も次の割り込みを受信
+-   **デバッグ出力**: 64tick 毎に"TICK"メッセージで動作確認
 
-**Initialization Order**
+**初期化順序**
 
-1. `remap_pic()` - Relocate PIC to 32 and above
-2. `set_masks()` - Enable only IRQ0
-3. `idt_init()` - Set IDT table
-4. `init_pit_100hz()` - Set timer to 100Hz
-5. `sti` - Enable interrupts
-6. `initial_context_switch()` - Start first thread
+1. `remap_pic()` - PIC を 32 番以降に再配置
+2. `set_masks()` - IRQ0 のみ有効化
+3. `idt_init()` - IDT テーブル設定
+4. `init_pit_100hz()` - タイマー 100Hz 設定
+5. `sti` - 割り込み有効化
+6. `initial_context_switch()` - 最初のスレッド開始
 
-## Troubleshooting
+## トラブルシューティング
 
--   **Screen display corrupted**: Set different `row` for each thread output
--   **System hang**: Check READY list update order
--   **Timer stops**: Check EOI send timing (send before schedule)
--   **No thread switching**: Check `slice_ticks` value and time slice determination logic
+-   **画面表示が乱れる**: 各スレッドが異なる行に出力するよう`row`を設定
+-   **システムハング**: READY リスト更新の順序を確認
+-   **タイマーが止まる**: EOI 送信タイミングを確認（schedule 前に送信）
+-   **スレッド切替しない**: `slice_ticks`の値とタイムスライス判定ロジックを確認
 
-## Understanding Check
+## 理解度チェック
 
-1.  Why do we call `schedule()` from IRQ handler (interrupt context)?
-2.  What changes when you modify the time slice length?
-3.  Why is it necessary to send EOI before `schedule()`?
+1.  なぜ IRQ ハンドラ（割り込みコンテキスト）から `schedule()` を呼ぶのか？
+2.  タイムスライスの長さを変えると何が変わる？
+3.  なぜ EOI を`schedule()`の前に送信する必要がある？
 
-## Next Steps
+## 次のステップ
 
-In Day 10, we'll introduce `sleep()` and implement blocking/wake-up using timer ticks.
+Day 10 で `sleep()` を導入し、タイマチックを利用したブロッキング/ウェイクアップを実装します。

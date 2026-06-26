@@ -1,243 +1,248 @@
-# Day 07: Thread Data Structures (TCB) 🧵
+# Day 07: タイマー割り込み（PIC/PIT） ⏱️
 
----
+## 本日のゴール
 
-🌐 Available languages:
+ハードウェアタイマー（PIT）と割り込みコントローラ（PIC）を初期化し、100Hz のタイマー割り込みを発生させて動作を確認する。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## 背景
 
-## Today's Goal
+Day5 で IDT を構築して CPU 例外をハンドリングできるようになったが、OS 開発ではハードウェアからの非同期割り込みも処理する必要がある。本日は PIC を再マッピングし、PIT で定期的なタイマー割り込みを生成して、ハードウェア割り込みの処理環境を整える。
 
-Design and implement in C the Thread Control Block (TCB) and READY list that form the foundation of multithreaded OS.
+## 新しい概念
 
-## Background
+-   **PIT (Programmable Interval Timer)**: 8254 チップで、定期的に割り込みを発生させるタイマー装置。基準クロック 1.193182MHz を分周して任意の周期を生成。チャンネル 0 がシステムタイマーとして使用され、スケジューリングの基盤となる。
+-   **PIC (Programmable Interrupt Controller)**: 8259A チップで、複数のデバイスからの IRQ を束ねて CPU に効率的に伝達。BIOS 設定では IRQ0-15 を 32-47 番に再マップして使用し、OS の割り込み管理を可能にする。
+-   **EOI (End Of Interrupt)**: 割り込み処理完了を PIC に通知するためのコマンド。次の割り込みを許可するために必要。
 
-While we can now generate timer interrupts in Day 6, OS development requires executing multiple tasks concurrently. Today we'll design TCB data structures for managing thread state and READY lists for managing threads, building the foundation for multithreading. Today focuses on design, with actual context switching implementation in the next session.
+## 学習内容
 
-## New Concepts
+-   PIC（プログラマブル割り込みコントローラ）8259A の再マッピング（IRQ0→INT 32 など）
+    -   PIC とは: 外部デバイスからの割り込み信号を CPU に伝えるコントローラ
+    -   再マッピング: BIOS 初期設定の割り込みベクタ（0-15）を OS 用に 32-47 へ変更
+-   PIT（プログラマブルインターバルタイマ）8254 の初期化（Divisor 設定）
+    -   PIT とは: 定期的な割り込みを生成するタイマーチップ
+    -   Divisor: クロック周波数を分周して割り込み間隔を設定（100Hz=10ms 間隔）
+-   IRQ（外部割り込み）ハンドラの登録・EOI（End Of Interrupt）
+    -   IRQ: Interrupt Request、ハードウェアからの割り込み要求
+    -   EOI: 割り込み処理完了を PIC に通知、次の割り込みを許可
+-   CPU 割り込み有効化（`sti`）と割り込みの流れ
+    -   sti: Set Interrupt Flag、CPU が割り込みを受け付けるよう設定
+    -   割り込み流れ: デバイス →PIC→CPU→ISR ハンドラ →EOI
 
--   **TCB (Thread Control Block)**: Data structure for storing thread state. Contains information like register values, stack pointer, execution state, priority, etc. One is assigned per thread, manipulated by the scheduler.
+## タスクリスト
 
-## Learning Content
+-   [ ] PIC を再マッピングして IRQ0-15 を IDT の 32-47 に割り当てる
+-   [ ] PIT を初期化して 100Hz（10ms 周期）のタイマー割り込みを設定する
+-   [ ] interrupt.s に IRQ0 スタブを追加し、レジスタ保存/復元を行う
+-   [ ] kernel.c でタイマー割り込みハンドラを実装し、tick カウンタを更新する
+-   [ ] IDT に IRQ0（ベクタ 32）を登録し、割り込み処理を有効化する
+-   [ ] EOI を適切なタイミングで PIC に送信する
+-   [ ] sti 命令で CPU 割り込みを有効化し、ハートビート表示を確認する
 
--   Thread states (READY/RUNNING/BLOCKED) and blocking reasons
--   Thread Control Block (TCB) design
--   Stack area allocation and initialization design (utilized in next session's context switching)
--   Basic functions for READY list (circular list) management
--   Thread creation API (template) design
+## 前提知識の確認
 
-【Note】Minimal TCB set
+### 必要な知識
 
--   First, align `esp` (stack pointer), `state` (READY/RUNNING/BLOCKED), `next`/`next_ready` (for READY circulation), `next_blocked` (for BLOCKED chain) as minimal configuration.
+-   Day 01〜05（ブート、GDT、プロテクトモード、VGA、IDT/例外）
+-   I/O ポートアクセス（`inb/outb`）
 
-## Task List
+### 今日新しく学ぶこと
 
--   [ ] Define enum types for thread states (READY/RUNNING/BLOCKED) and blocking reasons
--   [ ] Design TCB structure and define fields like stack, state, counters
--   [ ] Define kernel context structure to manage current_thread, ready_thread_list, etc.
--   [ ] Implement circular list operation functions (push_back, pop_front) for READY list
--   [ ] Implement thread creation API (create_thread) for attribute setting and READY insertion
--   [ ] Create demo threads in kmain and confirm READY list initialization
--   [ ] Verify operation in QEMU and display list initialization messages
+-   PIC の ICW1〜ICW4 による初期化手順とマスク設定
+-   PIT のコマンドレジスタ（0x43）とチャンネル 0（0x40）への分周値設定
+-   ハードウェア割り込みのハンドラからの EOI 発行
 
-## Prerequisites Check
+## 進め方と構成
 
-### Required Knowledge
-
--   Day 01-06 (boot, GDT, VGA, IDT/exceptions, timer IRQ)
--   C structures, enums, pointer basics
-
-### What's New Today
-
--   Safe TCB layout (reasons for placing stack at beginning)
--   READY queue using circular singly-linked list
--   Thread attributes (display row, counter, delay, etc.)
-
-## Approach and Configuration
-
-Like Day 05/06, keep assembly minimal (under boot/) and create data structures mainly in C.
+Day 06 と同様、アセンブリは最小限（boot/ 配下）に留め、C で PIC/PIT/IDT の設定を行います。
 
 ```
 ├── boot
-│   ├── boot.s           # 16-bit: A20, built-in GDT, load kernel with INT 13h, PE switch
-│   └── kernel_entry.s   # 32-bit: segment/stack setup → kmain()
-├── io.h                 # inb/outb/io_wait (reuse existing)
-├── kernel.c             # TCB definition, ready list, thread creation API template
-├── vga.h                # VGA API (reuse existing)
-└── Makefile             # Link boot + kernel
+│   ├── boot.s            # 16bit: A20, GDT内蔵, INT 13hでkernel読込, PE切替
+│   ├── kernel_entry.s    # 32bit: セグメント/スタック設定 → kmain()
+│   └── interrupt.s       # 例外 + IRQスタブ（IRQ0）と共通入口
+├── io.h                  # inb/outb/io_wait（Cインラインasm）
+├── kernel.c              # PIC再マッピング + PIT設定 + IDT登録 + ハンドラ + デモ
+├── vga.h                 # VGA API（C）
+└── Makefile              # boot + kernel + interrupt を連結して os.img を生成
 ```
 
-See `day99_completed/include/kernel.h` and `src/kernel.c` for overall picture and naming reference (similar thread structure and ready queue concepts).
+完成版は `day12_completed` を参考にしてください（PIC/PIT/IDT の役割分担とハンドラ構成）。
 
-## Implementation Guide (Example)
+## 実装ガイド（例）
 
-The following are implementation guidelines. Write source comments carefully in the actual code.
+以降は実装の指針です。実際のコードではソース内コメントを日本語で丁寧に記述しましょう。
 
-### 1. Thread States and Blocking Reasons (C)
+### 1. PIC の再マッピング（C）
+
+目的: IRQ0〜IRQ15 を IDT の 32〜47 に再配置（CPU 例外 0〜31 と衝突しないように）
 
 ```c
-// Thread states
-typedef enum {
-    THREAD_READY,
-    THREAD_RUNNING,
-    THREAD_BLOCKED
-} thread_state_t;
+#include "io.h"
 
-// Blocking reasons
-typedef enum {
-    BLOCK_REASON_NONE,
-    BLOCK_REASON_TIMER,    // sleep() etc.
-    BLOCK_REASON_KEYBOARD  // input wait etc.
-} block_reason_t;
+#define PIC1_CMD  0x20  // マスタPIC コマンド
+#define PIC1_DATA 0x21  // マスタPIC データ
+#define PIC2_CMD  0xA0  // スレーブPIC コマンド
+#define PIC2_DATA 0xA1  // スレーブPIC データ
+
+#define PIC_EOI   0x20  // End Of Interrupt
+
+static void remap_pic(void) {
+    uint8_t a1 = inb(PIC1_DATA); // 現マスク保存
+    uint8_t a2 = inb(PIC2_DATA);
+
+    // ICW1: 初期化, エッジトリガ, ICW4必要
+    outb(PIC1_CMD, 0x11);
+    outb(PIC2_CMD, 0x11);
+
+    // ICW2: 割り込みベクタオフセット
+    outb(PIC1_DATA, 0x20); // マスタ: 0x20 (32)
+    outb(PIC2_DATA, 0x28); // スレーブ: 0x28 (40)
+
+    // ICW3: カスケード配線
+    outb(PIC1_DATA, 0x04); // マスタ: IRQ2 にスレーブ接続
+    outb(PIC2_DATA, 0x02); // スレーブ: ID=2
+
+    // ICW4: 8086/88 モード
+    outb(PIC1_DATA, 0x01);
+    outb(PIC2_DATA, 0x01);
+
+    // マスク復元（最初はIRQ0だけ有効にするなら 0xFE/0xFF を書く）
+    outb(PIC1_DATA, a1);
+    outb(PIC2_DATA, a2);
+}
+
+static void set_irq_masks(uint8_t master_mask, uint8_t slave_mask) {
+    outb(PIC1_DATA, master_mask); // 0=有効, 1=無効
+    outb(PIC2_DATA, slave_mask);
+}
+
+static inline void send_eoi_master(void) { outb(PIC1_CMD, PIC_EOI); }
+static inline void send_eoi_slave(void)  { outb(PIC2_CMD, PIC_EOI); }
 ```
 
-### 2. Thread Control Block (TCB) (C)
+例: 最初は IRQ0（タイマ）だけ有効にしたい → `set_irq_masks(0xFE, 0xFF);`
 
-Consider safe layout like "place stack array first to protect ESP from stack overflow".
+### 2. PIT の初期化（C）
+
+目的: 周波数 100Hz（10ms）で割り込みを発生させる。
+PIT クロックは 1,193,182 Hz → 分周値 `div = 1193182 / 100 = 11931(余り)`（おおよそ 11932 で OK）。
 
 ```c
-#define MAX_THREADS       4
-#define THREAD_STACK_SIZE 1024  // 4KB (uint32_t × 1024)
+#define PIT_CH0   0x40
+#define PIT_CMD   0x43
 
-typedef struct thread {
-    uint32_t stack[THREAD_STACK_SIZE]; // Place at beginning (for protection)
-    thread_state_t state;              // Thread state
-    uint32_t counter;                  // Arbitrary counter (for demo)
-    uint32_t delay_ticks;              // Counter update interval (tick)
-    uint32_t last_tick;                // Last updated tick
-    block_reason_t block_reason;       // Blocking reason
-    uint32_t wake_up_tick;             // Scheduled wake up tick
-    int display_row;                   // Display row
-    struct thread* next_ready;         // For READY circular list
-    struct thread* next_blocked;       // For BLOCKED list
-    uint32_t esp;                      // Stack pointer (used in context switching)
-} thread_t;
+static void init_pit_100hz(void) {
+    uint16_t div = 11932; // 100Hz 近似
+    outb(PIT_CMD, 0x36);  // チャンネル0, ローハイ, モード3(方形波), バイナリ
+    outb(PIT_CH0, div & 0xFF);       // LSB
+    outb(PIT_CH0, (div >> 8) & 0xFF); // MSB
+}
+
+【メモ】0x36 コマンドの内訳
+- ch0 / LSB→MSB / モード3（方形波）/ バイナリモード を意味します。
 ```
 
-### 3. Kernel Context (C)
+### 3. IRQ0（タイマ）スタブ（interrupt.s）
 
-Consolidate "currently running", "READY list head", "BLOCKED list head", "tick" in one place.
+Day 06 の `interrupt.s` に IRQ0 のスタブを追加します（例外と同じ共通入口を使う）。
 
-```c
-typedef struct {
-    thread_t* current_thread;
-    thread_t* ready_thread_list;   // Head of circular list
-    thread_t* blocked_thread_list; // Optional: can be unused today
-    uint32_t system_ticks;         // Reference Day 06 tick
-} kernel_context_t;
+```assembly
+[bits 32]
 
-static kernel_context_t g_ctx = {0};
+global irq0
+irq0:
+  push dword 0          ; ダミーerr
+  push dword 32         ; ベクタ番号（再マップ後のIRQ0）
+  jmp isr_common        ; 例外と同じ共通入口へ
 ```
 
-### 4. READY List Operations (C)
+IDT への登録時は `set_idt_gate(32, (uint32_t)irq0);` を呼びます。
 
-Implement as circular singly-linked list and organize basics of insertion/deletion.
+### 4. IDT 登録とハンドラ（C）
+
+IDT は Day 06 と同様に構築し、IRQ0（ベクタ 32）を登録します。ハンドラでは `tick` カウンタを増やし、EOI を PIC に通知します（スレーブ側ではないのでマスタ EOI で OK）。
 
 ```c
-// Add to end of list (if head is NULL, become 1-element circular pointing to self)
-static void ready_list_push_back(thread_t* t) {
-    if (!t) return;
-    if (!g_ctx.ready_thread_list) {
-        g_ctx.ready_thread_list = t;
-        t->next_ready = t;
-        return;
+extern void irq0(void);
+
+static volatile uint32_t tick = 0;
+
+void irq_handler_timer(void) {
+    tick++;
+    if ((tick % 100) == 0) { // 約1秒ごと（100Hz）
+        vga_puts(".");
     }
-    thread_t* head = g_ctx.ready_thread_list;
-    thread_t* last = head;
-    while (last->next_ready != head) last = last->next_ready;
-    t->next_ready = head;
-    last->next_ready = t;
+    send_eoi_master();
 }
 
-// Pop from front (empty: NULL, 1 element: to NULL)
-static thread_t* ready_list_pop_front(void) {
-    thread_t* head = g_ctx.ready_thread_list;
-    if (!head) return NULL;
-    if (head->next_ready == head) {
-        g_ctx.ready_thread_list = NULL;
-        head->next_ready = NULL;
-        return head;
+// isr_common から C に来る共通ハンドラ（例）
+struct isr_stack { uint32_t regs[8]; uint32_t int_no; uint32_t err_code; };
+void isr_handler_c(struct isr_stack* f) {
+    if (f->int_no == 32) { irq_handler_timer(); return; }
+    // それ以外（例外など）は Day 06 の処理に委ねる
+}
+
+static void idt_init_with_timer(void) {
+    // 省略: Day 06 と同様に idt[] を0クリアし、例外・必要なIRQを登録
+    set_idt_gate(32, (uint32_t)irq0);
+    load_idt();
+}
+```
+
+### 補足: EOI（End Of Interrupt）とは？どう使う？
+
+EOI は「割り込み処理が完了した」ことを PIC（8259A）に通知するためのコマンドです。PIC は各 IRQ ラインに対して「サービス中（In-Service）」ビットを持っており、EOI を受け取るまで同じ IRQ を再度 CPU に通しません。したがって、EOI を出し忘れると次回以降の同一 IRQ が届かず、タイマーが止まったように見える、キーボードが反応しなくなる、といった症状が発生します。
+
+-   基本形
+
+    -   マスタ PIC（IRQ0–7）: `outb(PIC1_CMD, 0x20)`
+    -   スレーブ PIC（IRQ8–15）: まずスレーブへ EOI、続けてマスタへ EOI（カスケード解放）
+
+-   送るタイミング
+
+    -   短いハンドラ（カウント増加・軽いログ等）なら、処理の最後で送っても良い。
+    -   ただし、ハンドラ内で重い処理やスレッド切替（スケジューリング）を行う可能性がある場合は、先に EOI を送るのが実用的です。先に EOI を送っておけば、切替後も次の IRQ が失われず、タイマー等が継続して動作します。
+    -   本カリキュラムでは Day 09 でプリエンプションを導入するため、IRQ0（PIT）については「先に EOI → その後に `tick++` や `schedule()`」という順序を推奨しています。
+
+-   よくある落とし穴
+
+    -   EOI を送らない（またはスレーブ割り込みでマスタへの EOI を忘れる）
+    -   ハンドラ内で無限ループ等があり、EOI に到達しない
+    -   Auto-EOI モード（自動 EOI）を有効にせずに EOI を省略する（本教材では扱いません）
+
+-   コード例（PIT/IRQ0: マスタのみ）
+    ```c
+    void timer_handler_c(void) {
+        send_eoi_master();       // 先にEOIを送って次回IRQを保証
+        tick++;
+        if (tick - last >= slice) { /* schedule(); */ }
     }
-    thread_t* last = head;
-    while (last->next_ready != head) last = last->next_ready;
-    thread_t* ret = head;
-    g_ctx.ready_thread_list = head->next_ready;
-    last->next_ready = g_ctx.ready_thread_list;
-    ret->next_ready = NULL;
-    return ret;
-}
-```
+    ```
 
-### 5. Thread Creation API (Template) (C)
-
-Full stack initialization and context switching will be implemented in Day 08 onwards. Here prepare up to attribute setting and READY insertion.
+### 5. kmain の初期化順序
 
 ```c
-static thread_t g_threads[MAX_THREADS];
-static int g_thread_count = 0;
-
-static thread_t* alloc_thread_slot(void) {
-    if (g_thread_count >= MAX_THREADS) return NULL;
-    return &g_threads[g_thread_count++];
-}
-
-// Stack initialization will be fully implemented next time (Day 08)
-static void initialize_thread_stack_stub(thread_t* t, void (*func)(void)) {
-    (void)func;
-    t->esp = (uint32_t)&t->stack[THREAD_STACK_SIZE];
-}
-
-// Set representative attributes and insert into READY
-int create_thread(void (*func)(void), uint32_t delay_ticks, int display_row, thread_t** out) {
-    if (!func || !out) return -1;
-    *out = NULL;
-    thread_t* t = alloc_thread_slot();
-    if (!t) return -2;
-
-    // Attributes
-    t->state = THREAD_READY;
-    t->counter = 0;
-    t->delay_ticks = delay_ticks ? delay_ticks : 1;
-    t->last_tick = 0;
-    t->block_reason = BLOCK_REASON_NONE;
-    t->wake_up_tick = 0;
-    t->display_row = display_row;
-    t->next_ready = NULL;
-    t->next_blocked = NULL;
-
-    initialize_thread_stack_stub(t, func);
-    ready_list_push_back(t);
-    *out = t;
-    return 0;
-}
-```
-
-### 6. Demo (kmain) (C)
-
-For now, confirm up to READY list creation and visualize situation with display. Context switching will be added in Day 08.
-
-```c
-void demo_thread_func_A(void) { for(;;) { /* Implementation in Day 08 onwards */ } }
-void demo_thread_func_B(void) { for(;;) { /* Implementation in Day 08 onwards */ } }
-
 void kmain(void) {
     vga_init();
-    vga_puts("Day 07: Thread TCB design\n");
+    vga_puts("Day 07: Timer IRQ (100Hz)\n");
 
-    thread_t* t1 = NULL; thread_t* t2 = NULL;
-    create_thread(demo_thread_func_A, 10, 10, &t1);
-    create_thread(demo_thread_func_B, 20, 11, &t2);
+    remap_pic();
+    set_irq_masks(0xFE, 0xFF);  // IRQ0のみ許可
+    idt_init_with_timer();
+    init_pit_100hz();
 
-    // Simple display of READY list head element presence
-    if (g_ctx.ready_thread_list) vga_puts("READY list initialized\n");
+    __asm__ volatile ("sti");   // CPU割り込み許可
 
+    // メインループ（何もしない）
     for(;;) { __asm__ volatile ("hlt"); }
 }
 ```
 
-### 7. Makefile (Example)
+### 6. Makefile（例）
 
-Same as Day 05/06, build with boot split + C kernel configuration (minimal interrupts required).
+-   Day 06 と同様に、boot 分割＋ C カーネル構成でビルドします（`interrupt.s` を含める）。
+-   `day06_complete/Makefile`を参照してください。
 
 ```makefile
 AS   = nasm
@@ -250,6 +255,7 @@ CFLAGS = -ffreestanding -m32 -nostdlib -fno-stack-protector -fno-pic -O2 -Wall -
 
 BOOT    = boot/boot.s
 ENTRY   = boot/kernel_entry.s
+INTRASM = boot/interrupt.s   # IRQ0スタブを追加
 KERNELC = kernel.c
 
 BOOTBIN = boot.bin
@@ -258,8 +264,8 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 07: TCB/READY list build complete"
-	@echo "🚀 make run to start"
+	@echo "✅ Day 07: タイマー割り込み ビルド完了"
+	@echo "🚀 make run で起動"
 
 $(BOOTBIN): $(BOOT)
 	$(AS) -f bin $(BOOT) -o $(BOOTBIN)
@@ -267,11 +273,14 @@ $(BOOTBIN): $(BOOT)
 kernel_entry.o: $(ENTRY)
 	$(AS) -f elf32 $(ENTRY) -o $@
 
+interrupt.o: $(INTRASM)
+	$(AS) -f elf32 $(INTRASM) -o $@
+
 kernel.o: $(KERNELC) vga.h io.h
 	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
 
-$(KELF): kernel_entry.o kernel.o
-	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o kernel.o
+$(KELF): kernel_entry.o interrupt.o kernel.o
+	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o interrupt.o kernel.o
 
 $(KBIN): $(KELF)
 	$(OBJCOPY) -O binary $(KELF) $(KBIN)
@@ -283,30 +292,32 @@ run: $(OS_IMG)
 	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
 
 clean:
-	rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
+	rm -f $(BOOTBIN) kernel_entry.o interrupt.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
 
 .PHONY: all run clean
 ```
 
-## Troubleshooting
+## トラブルシューティング
 
--   READY list remains empty
-    -   Check return value of `create_thread` and logic of `ready_list_push_back`
-    -   Validation for exceeding `MAX_THREADS` or `func==NULL`
--   No display output
-    -   Check initialization procedure from Day 03-06 (boot/, VGA initialization)
+-   ピリオドが出ない（ハートビートが見えない）
+    -   `sti` を呼んでいるか、`hlt` で CPU をアイドルさせているか
+    -   PIC のマスクが正しいか（`0xFE` / `0xFF`）
+    -   IDT のベクタ 32 に `irq0` を登録済みか
+-   例外で止まる
+    -   `isr_common` のスタック処理と C 側の解析が一致しているか
+    -   例外と IRQ のベクタ番号（0〜31 / 32〜47）が混ざっていないか
 
-## Understanding Check
+## 理解度チェック
 
-1. Why does placing `stack[]` at the beginning of TCB improve safety?
-2. What are the merits and precautions of having READY queue as circular singly-linked list?
-3. What are the roles of `delay_ticks` / `last_tick` / `wake_up_tick`?
-4. Which TCB fields are referenced during context switching?
+1. なぜ PIC の再マッピングが必要なのか？
+2. 100Hz の分周値をどのように計算するか？
+3. EOI はどこに、いつ送るのか？
+4. 例外と IRQ のハンドラはどのように区別しているか？
 
-## Next Steps
+## 次のステップ
 
--   ✅ TCB (Thread Control Block) design
--   ✅ Basic READY list operations
--   ✅ Thread creation API template
+-   ✅ PIC の再マッピングとマスク設定
+-   ✅ PIT の初期化（100Hz）
+-   ✅ IRQ0（タイマ）ハンドラでの心拍表示
 
-Day 08 will implement context switching (assembly) and actually switch threads using TCB's `esp` and initial stack.
+Day 07 ではスレッドやタスクの土台へ繋げるため、タイマティックを用いた時間管理（チックカウンタ）を応用していきます。

@@ -1,4 +1,5 @@
-;      Day 08 完成版 - 32ビット カーネルエントリ
+; Day 08 完成版 - 32ビット カーネルエントリ
+
 [bits  32]
 	global kernel_entry
 	extern kmain

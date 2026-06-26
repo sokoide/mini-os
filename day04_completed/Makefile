@@ -1,4 +1,4 @@
-# Makefile for Day 04 Completed - Cベースのシリアル + VGA（boot分割）
+# Makefile for Day 04 Completed - C-based VGA with split boot
 
 AS   = nasm
 CC   = i686-elf-gcc
@@ -18,8 +18,8 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 04 Completed: Cベース構成でビルド完了"
-	@echo "🚀 実行: make run  （シリアルは端末に表示されます）"
+	@echo "✅ Day 04 Completed: ビルド完了"
+	@echo "🚀 実行: make run"
 
 $(BOOTBIN): $(BOOT)
 	$(AS) -f bin $(BOOT) -o $(BOOTBIN)
@@ -41,16 +41,9 @@ $(OS_IMG): $(BOOTBIN) $(KBIN)
 	truncate -s 1440K $(OS_IMG)
 
 run: $(OS_IMG)
-	@echo "🚀 QEMUで起動（-serial stdio）..."
-	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
-
-debug: $(OS_IMG)
-	@echo "🔍 モニタ付きで起動..."
-	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio -monitor tcp:127.0.0.1:4444,server,nowait
+	$(QEMU) -fda $(OS_IMG) -boot a
 
 clean:
-	@echo "🧹 クリーンアップ..."
 	rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
-	@echo "✅ 完了"
 
-.PHONY: all run debug clean
+.PHONY: all run clean

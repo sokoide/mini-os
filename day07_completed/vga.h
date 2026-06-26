@@ -1,4 +1,4 @@
-// vga.h — VGAテキストモード制御
+// vga.h — VGAテキストモード制御（C, freestanding）
 #pragma once
 #include <stdint.h>
 
