@@ -1,152 +1,150 @@
-# Day 10: Sleep/Timing 💤
+# Day 10: スリープ/タイミング 💤
 
----
+## 本日のゴール
+タイマー割り込みを使ってsleep()関数を実装し、スレッドのブロッキングとウェイクアップの仕組みを実現する。
 
-🌐 Available languages:
+## SWE 向けモチベーション
 
-[English](./README.md) | [日本語](./README_ja.md)
+`sleep` は「指定時間 CPU を手放す」仕組みです。これがないと待機はビジーループ（CPU を燃やし続ける）になります。ブロッキング I/O、`epoll`/`select`、async/await の根底にある「待ち」の概念を、タイマとブロック状態で実装します。効率的な並行処理の鍵であり、Day 09 のスケジューラを実用的にする仕上げです。
 
-## Today's Goal
-Implement sleep() function using timer interrupts to realize thread blocking and wake-up mechanisms.
+## 背景
+Day9でプリエンプティブスケジューリングを実装したが、スレッドが自発的にCPUを明け渡す手段がなかった。本日はタイマーベースのスリープ機能を実装し、スレッドが指定時間待機してCPUを効率的に利用できるようにする。
 
-## Background
-In Day 9, we implemented preemptive scheduling, but threads had no means to voluntarily yield the CPU. Today we'll implement timer-based sleep functionality, allowing threads to wait for specified time periods and use CPU efficiently.
+## 新しい概念
+- **ブロッキング**: スレッドが何らかの理由（タイマー、I/O等）で実行を停止し、READYリストからBLOCKEDリストに移行すること。
+- **ウェイクアップ**: 待機条件が満たされたスレッドをBLOCKEDリストからREADYリストに戻すこと。
 
-## New Concepts
-- **Blocking**: When threads stop execution for some reason (timer, I/O, etc.) and move from READY list to BLOCKED list.
-- **Wake-up**: Returning threads that meet their waiting conditions from BLOCKED list back to READY list.
+## 学習内容
 
-## Learning Content
+- スレッド状態管理（READY/RUNNING/BLOCKED）
+- タイマーベースの待機機能（sleep）
+- ブロック理由の分類（BLOCK_REASON_TIMER等）
+- 時刻順ソートされたブロックリスト
+- アイドルスレッドによるCPU効率化
+- 構造化されたカーネルコンテキスト管理
 
-- Thread state management (READY/RUNNING/BLOCKED)
-- Timer-based waiting functionality (sleep)
-- Classification of blocking reasons (BLOCK_REASON_TIMER, etc.)
-- Time-ordered sorted blocked list
-- CPU efficiency through idle thread
-- Structured kernel context management
+## タスクリスト
+- [ ] スレッド状態をREADY/RUNNING/BLOCKEDに拡張する
+- [ ] BLOCKEDリストを時刻順に管理するデータ構造を実装する
+- [ ] sleep()関数を実装し、スレッドをBLOCKED状態にする
+- [ ] タイマー割り込みハンドラでウェイクアップチェックを行う
+- [ ] 起床時刻の来たスレッドをREADYリストに戻す
+- [ ] アイドルスレッドを実装してCPUを効率的に休止する
+- [ ] 複数のデモスレッドを作成し、異なるスリープ時間で動作を確認する
+- [ ] QEMUで動作確認し、スレッドのブロッキングとウェイクアップを確認する
 
-## Task List
-- [ ] Extend thread states to READY/RUNNING/BLOCKED
-- [ ] Implement data structure to manage BLOCKED list in time order
-- [ ] Implement sleep() function to put threads in BLOCKED state
-- [ ] Perform wake-up checks in timer interrupt handler
-- [ ] Return threads with arrived wake-up time to READY list
-- [ ] Implement idle thread to efficiently halt CPU
-- [ ] Create multiple demo threads to verify operation with different sleep times
-- [ ] Verify operation in QEMU, confirming thread blocking and wake-up
-
-## Configuration
+## 構成
 
 ```
 boot/boot.s, boot/kernel_entry.s
-boot/interrupt.s        # Timer interrupt handler
-boot/context_switch.s   # Context switch + initial_context_switch
+boot/interrupt.s        # タイマー割り込みハンドラ
+boot/context_switch.s   # コンテキストスイッチ + initial_context_switch
 io.h, vga.h
-kernel.c                # Scheduler with sleep functionality
+kernel.c                # スリープ機能付きスケジューラ
 Makefile
 ```
 
-## Scheduler Structure
+## スケジューラの構造
 
-In Day 10, we adopt a structured scheduler to support sleep functionality.
+Day 10では、スリープ機能を支えるために、構造化されたスケジューラを採用しています。
 
--   **State management with `kernel_context_t`**: Kernel state (currently executing thread, runnable list, waiting list, etc.) is centrally managed in the `kernel_context_t` structure. This improves overall system visibility.
+-   **`kernel_context_t`による状態管理**: カーネルの状態（現在実行中のスレッド、実行可能リスト、待機中リストなど）は`kernel_context_t`構造体で一元管理されます。これにより、システム全体の見通しが良くなります。
 
--   **Two thread lists**:
-    -   **READY list**: Circular list managing executable threads. The scheduler selects the next thread from here.
-    -   **BLOCKED list**: List managing threads waiting due to `sleep` etc. Each timer interrupt checks if there are threads whose wake-up time has arrived.
+-   **2つのスレッドリスト**:
+    -   **READYリスト**: 実行可能なスレッドが管理される循環リストです。スケジューラはここから次のスレッドを選びます。
+    -   **BLOCKEDリスト**: `sleep`などで待機中のスレッドが管理されるリストです。タイマー割り込みのたびに、起床時刻が来たスレッドがいないかチェックされます。
 
--   **Role of `idle_thread`**: The system always has a special thread called `idle_thread`. This halts the CPU with `hlt` instruction when there are no other threads to execute. This allows the scheduler to operate safely even when no executable threads exist, preventing wasteful CPU consumption.
+-   **`idle_thread`の役割**: システムには、常に`idle_thread`という特別なスレッドが存在します。これは、他に実行すべきスレッドがない場合にCPUを`hlt`命令で休止させるためのものです。これにより、実行可能なスレッドが一つもない状況でもスケジューラが安全に動作し、CPUの無駄な消費を防ぎます。
 
--   **Generic blocking mechanism**: The `block_current_thread` function is a generic mechanism for putting threads to wait for specific reasons (`block_reason_t`). In Day 10, we use this for timer waiting (`BLOCK_REASON_TIMER`).
+-   **汎用的なブロッキング機構**: `block_current_thread`関数は、スレッドを特定の理由（`block_reason_t`）で待機させるための汎用的な仕組みです。Day 10では、タイマー待機（`BLOCK_REASON_TIMER`）のためにこれを使用します。
 
-## Implementation Guide
+## 実装ガイド
 
-### Sleep Function Flow
+### スリープ機能のフロー
 
 ```
-🛌 sleep(ticks) called
+🛌 sleep(ticks) 呼び出し
      ↓
-📤 remove_from_ready_list()     # Remove from READY list
+📤 remove_from_ready_list()     # READYリストから削除
      ↓
-🔒 Change to THREAD_BLOCKED state
+🔒 THREAD_BLOCKED状態に変更
      ↓
 ⏰ wake_up_tick = current_ticks + ticks
      ↓
-📋 Insert in time order to BLOCKED list
+📋 BLOCKEDリストに時刻順で挿入
      ↓
-🔄 schedule()                   # Switch to other thread
+🔄 schedule()                   # 他のスレッドに切替
 ```
 
-### Timer Interrupt Processing Flow
+### タイマー割り込み処理フロー
 
 ```
-🕒 Timer Interrupt (IRQ0)
+🕒 タイマー割り込み (IRQ0)
      ↓
-✅ eoi_master()                 # Send EOI
+✅ eoi_master()                 # EOI送信
      ↓
-📈 system_ticks++               # Update system time
+📈 system_ticks++               # システム時刻更新
      ↓
-🔍 check_and_wake_timer_threads() # Check wake-up time
+🔍 check_and_wake_timer_threads() # 起床時刻チェック
      ↓
-📤 Move from BLOCKED list → READY list
+📤 BLOCKEDリスト → READYリストに移動
      ↓
-🔄 schedule()                   # Thread switch when needed
+🔄 schedule()                   # 必要時にスレッド切替
 ```
 
-### Complete Implementation Code
+### 完全実装コード
 
-**Data Structure Definitions**
+**データ構造定義**
 
 ```c
-// Thread state
+// スレッド状態
 typedef enum {
     THREAD_READY,
     THREAD_RUNNING,
     THREAD_BLOCKED,
 } thread_state_t;
 
-// Block reason
+// ブロック理由
 typedef enum {
     BLOCK_REASON_NONE,
-    BLOCK_REASON_TIMER,  // Sleep waiting
+    BLOCK_REASON_TIMER,  // スリープ待機
 } block_reason_t;
 
-// Thread Control Block (TCB)
+// スレッド制御ブロック（TCB）
 typedef struct thread {
-    uint32_t stack[1024];        // 4KB stack
-    uint32_t esp;                // Stack pointer
+    uint32_t stack[1024];        // 4KBスタック
+    uint32_t esp;                // スタックポインタ
 
-    thread_state_t state;        // Thread state
-    block_reason_t block_reason; // Block reason
+    thread_state_t state;        // スレッド状態
+    block_reason_t block_reason; // ブロック理由
 
-    uint32_t counter;            // Counter (for demo)
-    uint32_t delay_ticks;        // Sleep interval
-    uint32_t last_tick;          // Last execution time
-    uint32_t wake_up_tick;       // Scheduled wake-up time
+    uint32_t counter;            // カウンタ（デモ用）
+    uint32_t delay_ticks;        // スリープ間隔
+    uint32_t last_tick;          // 最終実行時刻
+    uint32_t wake_up_tick;       // 起床予定時刻
 
-    int display_row;             // Display row
+    int display_row;             // 表示行
 
-    struct thread* next_ready;   // For READY list
-    struct thread* next_blocked; // For BLOCKED list
+    struct thread* next_ready;   // READYリスト用
+    struct thread* next_blocked; // BLOCKEDリスト用
 } thread_t;
 
-// Kernel context
+// カーネルコンテキスト
 typedef struct {
-    thread_t* current_thread;     // Currently executing thread
-    thread_t* ready_thread_list;  // READY circular list
-    thread_t* blocked_thread_list; // BLOCKED time-ordered list
-    volatile uint32_t system_ticks; // System time
-    uint32_t scheduler_lock_count;  // Scheduler lock
+    thread_t* current_thread;     // 現在実行中のスレッド
+    thread_t* ready_thread_list;  // READY循環リスト
+    thread_t* blocked_thread_list; // BLOCKED時刻順リスト
+    volatile uint32_t system_ticks; // システム時刻
+    uint32_t scheduler_lock_count;  // スケジューラロック
 } kernel_context_t;
 
 static kernel_context_t k_context = {0};
 ```
 
-**Sleep Function Implementation**
+**sleep機能の実装**
 
 ```c
-// Sleep function
+// スリープ関数
 static void sleep(uint32_t ticks) {
     if (ticks == 0) {
         return;
@@ -160,15 +158,15 @@ static void sleep(uint32_t ticks) {
         return;
     }
 
-    // Calculate wake-up time and block
+    // 起床時刻を計算してブロック
     uint32_t wake_up_time = get_system_ticks() + ticks;
     block_current_thread(BLOCK_REASON_TIMER, wake_up_time);
 
-    // Transfer control to other thread
+    // 他のスレッドに制御を移す
     schedule();
 }
 
-// Generic block function
+// 汎用ブロック関数
 void block_current_thread(block_reason_t reason, uint32_t data) {
     asm volatile("cli");
 
@@ -178,10 +176,10 @@ void block_current_thread(block_reason_t reason, uint32_t data) {
         return;
     }
 
-    // Remove from READY list
+    // READYリストから削除
     remove_from_ready_list(thread);
 
-    // Set to blocked state
+    // ブロック状態に設定
     thread->state = THREAD_BLOCKED;
     thread->block_reason = reason;
     thread->next_blocked = NULL;
@@ -191,14 +189,14 @@ void block_current_thread(block_reason_t reason, uint32_t data) {
     if (reason == BLOCK_REASON_TIMER) {
         thread->wake_up_tick = data;
 
-        // Insert to BLOCKED list in time order
+        // BLOCKEDリストに時刻順で挿入
         if (!ctx->blocked_thread_list ||
             thread->wake_up_tick < ctx->blocked_thread_list->wake_up_tick) {
-            // Insert at head of list
+            // リストの先頭に挿入
             thread->next_blocked = ctx->blocked_thread_list;
             ctx->blocked_thread_list = thread;
         } else {
-            // Insert at appropriate position (time-ordered sort)
+            // 適切な位置に挿入（時刻順ソート）
             thread_t* current = ctx->blocked_thread_list;
             while (current->next_blocked &&
                    current->next_blocked->wake_up_tick <= thread->wake_up_tick) {
@@ -213,28 +211,28 @@ void block_current_thread(block_reason_t reason, uint32_t data) {
 }
 ```
 
-**Timer Interrupt Processing**
+**タイマー割り込み処理**
 
 ```c
-// Timer interrupt handler
+// タイマー割り込みハンドラ
 void timer_handler_c(void) {
-    // Send EOI first (important)
+    // 先にEOI送信（重要）
     eoi_master();
 
     kernel_context_t* ctx = get_kernel_context();
     ctx->system_ticks++;
 
-    // Wake-up check for blocked threads
+    // ブロック中スレッドのウェイクアップチェック
     check_and_wake_timer_threads();
 
-    // Time slice determination
+    // タイムスライス判定
     if ((ctx->system_ticks - last_slice_tick) >= slice_ticks) {
         last_slice_tick = ctx->system_ticks;
         schedule();
     }
 }
 
-// Wake-up time check & wake-up
+// 起床時刻チェック＆ウェイクアップ
 static void check_and_wake_timer_threads(void) {
     kernel_context_t* ctx = get_kernel_context();
     uint32_t current_ticks = ctx->system_ticks;
@@ -245,12 +243,12 @@ static void check_and_wake_timer_threads(void) {
         thread_t* thread_to_wake = ctx->blocked_thread_list;
         ctx->blocked_thread_list = thread_to_wake->next_blocked;
 
-        // Return to READY list
+        // READYリストに復帰
         unblock_and_requeue_thread(thread_to_wake);
     }
 }
 
-// Return thread to READY state
+// スレッドをREADY状態に復帰
 static void unblock_and_requeue_thread(thread_t* thread) {
     if (!thread) return;
 
@@ -258,15 +256,15 @@ static void unblock_and_requeue_thread(thread_t* thread) {
     thread->block_reason = BLOCK_REASON_NONE;
     thread->next_blocked = NULL;
 
-    // Add to READY list
+    // READYリストに追加
     add_thread_to_ready_list(thread);
 }
 ```
 
-**Scheduler Implementation**
+**スケジューラの実装**
 
 ```c
-// Main scheduler
+// メインスケジューラ
 static void schedule(void) {
     if (is_scheduler_locked()) {
         return;
@@ -292,17 +290,17 @@ static void schedule(void) {
     release_scheduler_lock();
 }
 
-// Execute thread switching
+// スレッド切替の実行
 static void perform_thread_switch(void) {
     kernel_context_t* ctx = get_kernel_context();
     thread_t* current = ctx->current_thread;
     thread_t* next = ctx->ready_thread_list;
 
     if (current == next) {
-        return; // Same thread, no switch needed
+        return; // 同じスレッド、切替不要
     }
 
-    // Rotate READY list
+    // READYリストをローテーション
     ctx->ready_thread_list = next->next_ready;
     ctx->current_thread = next;
     next->state = THREAD_RUNNING;
@@ -311,22 +309,22 @@ static void perform_thread_switch(void) {
         current->state = THREAD_READY;
     }
 
-    // Execute context switch
+    // コンテキストスイッチ実行
     context_switch(&current->esp, next->esp);
 }
 ```
 
-**Demo Threads**
+**デモスレッド**
 
 ```c
-// Idle thread
+// アイドルスレッド
 static void idle_thread(void) {
     for (;;) {
-        asm volatile("hlt");  // Halt CPU
+        asm volatile("hlt");  // CPUを休止
     }
 }
 
-// Demo thread A (50ms interval)
+// デモスレッドA（50ms間隔）
 static void threadA(void) {
     for (;;) {
         self->counter++;
@@ -334,11 +332,11 @@ static void threadA(void) {
         vga_set_color(VGA_LIGHT_GREEN, VGA_BLACK);
         vga_puts("Fast Thread A: ");
         vga_putnum(self->counter);
-        sleep(5);  // Wait 50ms
+        sleep(5);  // 50ms待機
     }
 }
 
-// Demo thread B (100ms interval)
+// デモスレッドB（100ms間隔）
 static void threadB(void) {
     for (;;) {
         self->counter++;
@@ -346,11 +344,11 @@ static void threadB(void) {
         vga_set_color(VGA_LIGHT_BLUE, VGA_BLACK);
         vga_puts("Med Thread B: ");
         vga_putnum(self->counter);
-        sleep(10); // Wait 100ms
+        sleep(10); // 100ms待機
     }
 }
 
-// Demo thread C (200ms interval)
+// デモスレッドC（200ms間隔）
 static void threadC(void) {
     for (;;) {
         self->counter++;
@@ -358,11 +356,11 @@ static void threadC(void) {
         vga_set_color(VGA_LIGHT_CYAN, VGA_BLACK);
         vga_puts("Slow Thread C: ");
         vga_putnum(self->counter);
-        sleep(20); // Wait 200ms
+        sleep(20); // 200ms待機
     }
 }
 
-// Demo thread D (500ms interval)
+// デモスレッドD（500ms間隔）
 static void threadD(void) {
     for (;;) {
         self->counter++;
@@ -370,51 +368,51 @@ static void threadD(void) {
         vga_set_color(VGA_LIGHT_MAGENTA, VGA_BLACK);
         vga_puts("Very Slow D: ");
         vga_putnum(self->counter);
-        sleep(50); // Wait 500ms
+        sleep(50); // 500ms待機
     }
 }
 ```
 
-## Implementation Key Points
+## 実装の要点
 
-**sleep(ticks) function flow:**
-1.  Remove current thread from READY list.
-2.  Set thread state to `THREAD_BLOCKED` and reason to `BLOCK_REASON_TIMER`.
-3.  Calculate wake-up time (`wake_up_tick`) and insert to BLOCKED list in time order.
-4.  Call `schedule()` to switch to next executable thread.
+**sleep(ticks) 関数の流れ:**
+1.  現在のスレッドをREADYリストから削除する。
+2.  スレッドの状態を`THREAD_BLOCKED`に、理由を`BLOCK_REASON_TIMER`に設定する。
+3.  起床時刻（`wake_up_tick`）を計算し、BLOCKEDリストに時刻順で挿入する。
+4.  `schedule()`を呼び出して、次の実行可能なスレッドに切り替える。
 
-**Timer interrupt handler (timer_handler_c) role:**
-1.  Increment system tick (`system_ticks`).
-2.  Check BLOCKED list and return threads whose wake-up time has arrived to READY list.
-3.  If time slice has elapsed, call `schedule()` for preemptive switching.
+**タイマー割り込みハンドラ (timer_handler_c) の役割:**
+1.  システムティック (`system_ticks`) をインクリメントする。
+2.  BLOCKEDリストをチェックし、起床時刻を迎えたスレッドをREADYリストに戻す。
+3.  タイムスライスが経過していれば、`schedule()`を呼び出してプリエンプティブな切り替えを行う。
 
-**Scheduler (schedule) operation:**
--   Always selects next thread from READY list.
--   Even when READY list is empty (only `idle_thread` etc.), `idle_thread` is selected so system doesn't stop.
+**スケジューラ (schedule) の動作:**
+-   常にREADYリストから次のスレッドを選択します。
+-   READYリストが空の場合（`idle_thread`のみの場合など）でも、`idle_thread`が選択されるため、システムは停止しません。
 
-**Important design patterns:**
-- **Time-ordered sort**: BLOCKED list sorted by earliest wake-up time
-- **Idle thread**: Dedicated thread to efficiently halt CPU
-- **Scheduler lock**: Lock mechanism to prevent re-entry during interrupts
-- **Generic block mechanism**: Design that can handle future I/O waiting
+**重要な設計パターン:**
+- **時刻順ソート**: BLOCKEDリストは起床時刻の早い順にソート
+- **アイドルスレッド**: CPUを効率的に休止させる専用スレッド
+- **スケジューラロック**: 割り込み中の再入を防ぐロック機構
+- **汎用ブロック機構**: 将来のI/O待ちにも対応可能な設計
 
-## Troubleshooting
+## トラブルシューティング
 
--   **"No switching after sleep"**
-    -   Verify removal from READY list and insertion to BLOCKED list logic is correct. Pay special attention when manipulating list head or tail.
--   **"Timer stops"**
-    -   Verify EOI (End of Interrupt) is sent to PIC at beginning of interrupt handler.
--   **"All threads blocked causing hang"**
-    -   Verify idle_thread is working correctly and remains in READY list.
--   **"Wake-up time incorrect"**
-    -   Verify time-ordered sort of BLOCKED list is working correctly.
+-   **「スリープ後に切り替わらない」**
+    -   READYリストからの削除、BLOCKEDリストへの挿入ロジックが正しいか確認する。特にリストの先頭や末尾を操作する場合に注意が必要です。
+-   **「タイマーが止まる」**
+    -   割り込みハンドラの最初でPICにEOI（End of Interrupt）を送信しているか確認する。
+-   **「すべてのスレッドがブロックされてハング」**
+    -   idle_threadが正しく動作しているか、READYリストに残っているか確認する。
+-   **「起床時刻が正しくない」**
+    -   BLOCKEDリストの時刻順ソートが正しく動作しているか確認する。
 
-## Understanding Check
+## 理解度チェック
 
-1. Why is it necessary to sort BLOCKED list in time order?
-2. What happens to system if there's no idle_thread?
-3. Why is scheduler lock necessary?
+1. なぜBLOCKEDリストを時刻順にソートする必要がある？
+2. idle_threadがない場合、システムはどうなる？
+3. スケジューラロックが必要な理由は？
 
-## Next Steps
+## 次のステップ
 
-In Day 11, we'll introduce keyboard input and apply this blocking mechanism to I/O waiting as well.
+Day 11 ではキーボード入力を導入し、このブロッキング機構をI/O待ちにも応用します。

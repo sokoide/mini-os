@@ -4,7 +4,7 @@
 
 # Executable and binary files
 *.bin
-kernel.elf
+*.elf
 os.img
 *.exe
 
@@ -49,8 +49,8 @@ Desktop.ini
 # List files
 *.lst
 
-# Temporary test files
-test_*
+# Temporary test files (ルート直下の一時ファイルのみ無視。tests/test_*.c は保護)
+/test_*
 temp_*
 
 # Core dumps

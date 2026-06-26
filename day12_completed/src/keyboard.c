@@ -1,160 +1,240 @@
-// ============================================================================
-// Keyboard Driver Implementation
-// PS/2 Keyboard Input Handling with Ring Buffer
-// ============================================================================
-
 #include "keyboard.h"
 
 #include "kernel.h"
 
-#define NULL ((void*)0)
+// キーボード関連の静的変数
+static keyboard_buffer_t kbd_buffer;         // キーボード入力バッファ
+static volatile bool shift_pressed = false;  // Shiftキーの状態
 
-// ============================================================================
-// 定数定義とグローバル変数
-// ============================================================================
+// スキャンコード→ASCII変換テーブル（US配列）
+static const char scancode_to_ascii[] = {
+    0,   27,  '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8,
+    9,   'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 10,  0,
+    'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', 39,  '`', 0,   92,  'z',
+    'x', 'c', 'v', 'b', 'n', 'm', ',', '.', '/', 0,   '*', 0,   ' '};
 
-// スキャンコード→ASCII（US配列, Shift無視, makeのみ）
-static const char scancode_map[128] = {
-    0,   27,   '1',  '2', '3',  '4', '5', '6', '7', '8', '9', '0', '-',
-    '=', '\b', '\t', 'q', 'w',  'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
-    '[', ']',  '\n', 0,   'a',  's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
-    ';', '\'', '`',  0,   '\\', 'z', 'x', 'c', 'v', 'b', 'n', 'm', ',',
-    '.', '/',  0,    '*', 0,    ' ', 0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,    0,   0,    0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,    0,    0,   0,    0,   0,   0,   0,   0,
-};
+// Shift押下時のスキャンコード→ASCII変換テーブル
+static const char scancode_to_ascii_shift[] = {
+    0,   27,  '!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '_', '+', 8,
+    9,   'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', 10,  0,
+    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', 34,  '~', 0,   '|', 'Z',
+    'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0,   '*', 0,   ' '};
 
-// キーボードリングバッファ
-static volatile char kbuf[KEYBOARD_BUFFER_SIZE];
-static volatile uint32_t khead = 0, ktail = 0;
-
-static inline int kbuf_is_empty(void) {
-    return khead == ktail;
+/*
+ * キーボードバッファ初期化関数
+ * 【役割】リングバッファを初期化する
+ */
+void init_keyboard_buffer(void) {
+    kbd_buffer.head = 0;
+    kbd_buffer.tail = 0;
+    debug_print("KEYBOARD: Buffer initialized");
 }
 
-static inline int kbuf_is_full(void) {
-    return ((khead + 1) % KEYBOARD_BUFFER_SIZE) == ktail;
+/*
+ * キーボードバッファ書き込み関数
+ * 【役割】バッファに文字を追加（プロデューサー）
+ */
+void keyboard_buffer_put(char c) {
+    int next_head = (kbd_buffer.head + 1) % KEYBOARD_BUFFER_SIZE;
+    if (next_head == kbd_buffer.tail) {
+        debug_print("KEYBOARD: Buffer overflow, dropping character");
+        return;  // バッファフル
+    }
+
+    // 先にデータを書き込み、その後headを公開（SPSC）
+    kbd_buffer.buffer[kbd_buffer.head] = c;
+    kbd_buffer.head = next_head;
 }
 
-static void kbuf_push(char c) {
-    uint32_t nh = (khead + 1) % KEYBOARD_BUFFER_SIZE;
-    if (nh != ktail) {
-        kbuf[khead] = c;
-        khead = nh;
+/*
+ * キーボードバッファ読み取り関数
+ * 【役割】バッファから文字を取得（コンシューマー）
+ */
+char keyboard_buffer_get(void) {
+    if (kbd_buffer.head == kbd_buffer.tail) {
+        return 0;  // バッファが空
+    }
+
+    char c = kbd_buffer.buffer[kbd_buffer.tail];
+    kbd_buffer.tail = (kbd_buffer.tail + 1) % KEYBOARD_BUFFER_SIZE;
+    return c;
+}
+
+/*
+ * キーボードバッファ空チェック関数
+ */
+bool keyboard_buffer_is_empty(void) {
+    return kbd_buffer.head == kbd_buffer.tail;
+}
+
+/*
+ * キーボードバッファフルチェック関数
+ */
+bool keyboard_buffer_is_full(void) {
+    int next_head = (kbd_buffer.head + 1) % KEYBOARD_BUFFER_SIZE;
+    return next_head == kbd_buffer.tail;
+}
+
+/*
+ * キーボードコントローラ初期化関数（分割関数）
+ * 【役割】PS/2キーボードコントローラの初期化
+ */
+void init_keyboard_controller(void) {
+    debug_print("KEYBOARD: PS/2 controller initialization");
+    // PS/2コントローラは通常、初期化時に自動的に利用可能になる
+    // 特別な初期化コマンドは不要（シンプルな実装）
+}
+
+/*
+ * キーボードステータス読み取り関数（分割関数）
+ * 【役割】キーボードコントローラのステータスを読み取る
+ */
+uint8_t read_keyboard_status(void) {
+    return inb(KEYBOARD_STATUS_PORT);
+}
+
+/*
+ * キーボードデータ読み取り関数（分割関数）
+ * 【役割】キーボードコントローラからデータを読み取る
+ */
+uint8_t read_keyboard_data(void) {
+    return inb(KEYBOARD_DATA_PORT);
+}
+
+/*
+ * スキャンコード→ASCII変換関数（分割関数）
+ * 【役割】スキャンコードをASCII文字に変換する
+ */
+char convert_scancode_to_ascii(uint8_t scancode, bool shift_pressed) {
+    if (scancode >= sizeof(scancode_to_ascii)) {
+        return 0;  // 範囲外
+    }
+
+    if (shift_pressed) {
+        return scancode_to_ascii_shift[scancode];
+    } else {
+        return scancode_to_ascii[scancode];
     }
 }
 
-static int kbuf_pop(char* out) {
-    if (kbuf_is_empty())
-        return 0;
-    *out = kbuf[ktail];
-    ktail = (ktail + 1) % KEYBOARD_BUFFER_SIZE;
-    return 1;
+/*
+ * キーボード初期化関数（統合関数）
+ * 【役割】キーボード機能全体を初期化
+ */
+void init_keyboard(void) {
+    init_keyboard_controller();
+    init_keyboard_buffer();
+    debug_print("KEYBOARD: Complete initialization");
 }
 
-// ============================================================================
-// 内部ヘルパー関数
-// ============================================================================
-
-// PS/2キーボード初期化
-static inline int ps2_output_full_internal(void) {
-    return (inb(0x64) & 0x01);
-}
-
-void ps2_keyboard_init(void) {
-    // QEMUでは特別な初期化は不要な場合が多い。出力バッファを軽く掃除のみ。
-    int guard = 32;
-    while (ps2_output_full_internal() && guard--) {
-        (void)inb(0x60);
-    }
-}
-
-// ============================================================================
-// パブリックAPI関数群
-// ============================================================================
-
-// キーボード初期化
-void keyboard_init(void) {
-    ps2_keyboard_init();
-}
-
-// キーボード割り込みハンドラ
+/*
+ * キーボード割り込みハンドラ（C言語部分）
+ * 【役割】キーボード割り込み発生時の処理
+ * 【重要】interrupt.sのkeyboard_interrupt_handlerから呼び出される
+ */
 void keyboard_handler_c(void) {
-    // PIC に割り込み処理完了を通知
-    outb(0x20, 0x20);
+    // PICに割り込み処理完了を通知
+    outb(PIC_MASTER_COMMAND, 0x20);
 
     // キーボードデータの読み取り可能性をチェック
-    uint8_t status = inb(0x64);
-    if (!(status & 0x01)) {
-        serial_write_string(
-            "KEYBOARD: Interrupt fired but no data available\n");
+    uint8_t status = read_keyboard_status();
+    if (!(status & KEYBOARD_STATUS_OUTPUT_FULL)) {
+        debug_print("KEYBOARD: Interrupt fired but no data available");
         return;
     }
 
     // スキャンコードを読み取り
-    uint8_t scancode = inb(0x60);
+    uint8_t scancode = read_keyboard_data();
 
-    // キー離す操作は無視（break code）
-    if (scancode & 0x80) {
+    // キー離す操作は無視
+    if (scancode & SCANCODE_RELEASE_MASK) {
+        uint8_t key_code = scancode & 0x7F;
+
+        // Shiftキーの離す処理
+        if (key_code == SCANCODE_LEFT_SHIFT ||
+            key_code == SCANCODE_RIGHT_SHIFT) {
+            shift_pressed = false;
+        }
+        return;
+    }
+
+    // Shiftキーの押下処理
+    if (scancode == SCANCODE_LEFT_SHIFT || scancode == SCANCODE_RIGHT_SHIFT) {
+        shift_pressed = true;
         return;
     }
 
     // スキャンコードをASCII文字に変換
-    char ch = (scancode < 128) ? scancode_map[scancode] : 0;
+    char ascii = convert_scancode_to_ascii(scancode, shift_pressed);
 
-    if (ch != 0) {
-        // バッファに格納
-        kbuf_push(ch);
+    if (ascii != 0) {
+        // 有効なASCII文字をバッファに格納
+        keyboard_buffer_put(ascii);
+
+        // キーボード入力待ちでブロックされているスレッドを起床させる
+        unblock_keyboard_threads();
 
         // デバッグ出力
-        serial_write_string("KEY: ");
-        serial_write_char(ch);
-        serial_write_string(" (");
-        serial_puthex(scancode);
-        serial_write_string(")\n");
-
-        // 入力待ちスレッドをREADYへ（もしあれば）
-        unblock_keyboard_threads();
+        char debug_msg[32];
+        debug_msg[0] = 'K';
+        debug_msg[1] = 'E';
+        debug_msg[2] = 'Y';
+        debug_msg[3] = ':';
+        debug_msg[4] = ' ';
+        debug_msg[5] = ascii;
+        debug_msg[6] = ' ';
+        debug_msg[7] = '(';
+        itoa((uint32_t)scancode, &debug_msg[8], 10);
+        int len = 8;
+        while (debug_msg[len] != 0) len++;
+        debug_msg[len] = ')';
+        debug_msg[len + 1] = 0;
+        debug_print(debug_msg);
     }
 }
 
-// ブロッキング文字入力
-char getchar_blocking(void) {
+/*
+ * 高レベル文字入力関数（ブロッキング）
+ * 【役割】1文字が入力されるまで待機し、その文字を返す
+ * 【重要】この関数はキー入力があるまでブロック（待機）する
+ */
+char getchar(void) {
     char c;
-    for (;;) {
-        if (kbuf_pop(&c))
-            return c;
 
-        // 入力が無ければブロック
-        asm volatile("cli");
-        if (kbuf_pop(&c)) {
-            asm volatile("sti");
-            return c;
-        }
+    // キーボードバッファから文字が取得できるまで待機
+    while ((c = keyboard_buffer_get()) == 0) {
+        // 汎用ブロック関数を呼び出し、キーボード入力を待つ
+        // このスレッドは BLOCK_REASON_KEYBOARD でブロックされる
         block_current_thread(BLOCK_REASON_KEYBOARD, 0);
-        asm volatile("sti");
-
         schedule();
     }
+    return c;
 }
 
-// キーボードバッファ空チェック
-int keyboard_buffer_empty(void) {
-    return kbuf_is_empty();
+/*
+ * scanf用文字入力関数
+ * 【役割】scanf("%c", &ch)と同等の機能
+ * 【備考】getchar()のエイリアス関数
+ */
+char scanf_char(void) {
+    return getchar();
 }
 
-// 行入力関数 (day99_completed から移植・改良)
+/*
+ * 文字列入力関数（安全な行入力）
+ * 【役割】改行まで文字列を読み取る（最大max_length-1文字）
+ * 【重要】バックスペース対応、エコー表示付き
+ */
 void read_line(char* buffer, int max_length) {
     // Enhanced input validation
     if (!buffer || max_length <= 1) {
-        serial_write_string("read_line: Invalid parameters\n");
+        debug_print("read_line: Invalid parameters");
         return;  // 無効なパラメータ
     }
 
     // Additional safety: reasonable upper limit check
     if (max_length > 1024) {
-        serial_write_string(
-            "read_line: Buffer size too large, limiting to 1024\n");
+        debug_print("read_line: Buffer size too large, limiting to 1024");
         max_length = 1024;  // Prevent excessive buffer sizes
     }
 
@@ -165,7 +245,7 @@ void read_line(char* buffer, int max_length) {
     buffer[0] = 0;
 
     while (pos < max_length - 1) {
-        c = getchar_blocking();
+        c = getchar();
 
         if (c == 10 || c == 13) {  // LF or CR
             // 改行で入力終了
@@ -192,34 +272,11 @@ void read_line(char* buffer, int max_length) {
     serial_write_char(10);  // 改行を出力
 }
 
-// PS/2出力バッファ確認
-int ps2_output_full(void) {
-    return ps2_output_full_internal();
-}
-
-// キーボード待機スレッドのブロック解除
-void unblock_keyboard_threads(void) {
-    asm volatile("cli");
-    kernel_context_t* ctx = get_kernel_context();
-    thread_t* current = ctx->blocked_thread_list;
-    thread_t* prev = NULL;
-    while (current) {
-        thread_t* next = current->next_blocked;
-        if (current->block_reason == BLOCK_REASON_KEYBOARD) {
-            if (prev) {
-                prev->next_blocked = current->next_blocked;
-            } else {
-                ctx->blocked_thread_list = current->next_blocked;
-            }
-
-            current->state = THREAD_READY;
-            current->block_reason = BLOCK_REASON_NONE;
-            current->next_blocked = NULL;
-            add_thread_to_ready_list(current);
-        } else {
-            prev = current;
-        }
-        current = next;
-    }
-    asm volatile("sti");
+/*
+ * scanf用文字列入力関数
+ * 【役割】scanf("%s", buffer)と同等の機能
+ * 【備考】read_line() のエイリアス関数
+ */
+void scanf_string(char* buffer, int max_length) {
+    read_line(buffer, max_length);
 }

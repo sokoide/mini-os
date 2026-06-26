@@ -1,4 +1,4 @@
-# Makefile for Day 03 Completed - C-based VGA with split boot
+# Makefile for Day 03 Completed - freestanding C の動作確認（C 移行のみ）
 
 AS   = nasm
 CC   = i686-elf-gcc
@@ -27,7 +27,7 @@ $(BOOTBIN): $(BOOT)
 kernel_entry.o: $(ENTRY)
 	$(AS) -f elf32 $(ENTRY) -o $@
 
-kernel.o: $(KERNELC) vga.h io.h
+kernel.o: $(KERNELC)
 	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
 
 $(KELF): kernel_entry.o kernel.o

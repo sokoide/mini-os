@@ -1,4 +1,4 @@
-# Makefile for Day 06 Completed - タイマー割り込み（PIC/PIT）
+# Makefile for Day 06 Completed - IDT/例外 + Cカーネル（boot分割）
 
 AS   = nasm
 CC   = i686-elf-gcc
@@ -19,7 +19,7 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 06 Completed: タイマー割り込みビルド完了"
+	@echo "✅ Day 06 Completed: 割り込みインフラ（IDT/例外）ビルド完了"
 	@echo "🚀 実行: make run"
 
 $(BOOTBIN): $(BOOT)

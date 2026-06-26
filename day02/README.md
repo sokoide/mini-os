@@ -1,180 +1,178 @@
-# Day 02: Protected Mode Transition ⚡
+# Day 02: プロテクトモード移行 ⚡
 
----
+## 本日のゴール
 
-🌐 Available languages:
+16 ビットリアルモードから 32 ビットプロテクトモードへ安全に移行し、VGA テキストバッファに直接文字列を表示する。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## SWE 向けモチベーション
 
-## Today's Goal
+現代 OS の「ユーザモード / カーネルモード」境界は、CPU の特権レベル（Ring 0/3）とセグメンテーションに由来します。この日はリアルモード（何でもありの 16bit）からプロテクトモード（保護付きの 32bit）への移行を書き、メモリ保護・特権分離という OS セキュリティの根幹がハードウェアでどう実現されるかを学びます。コンテナや仮想マシンの保護機構も同じ考えの延長です。
 
-Safely transition from 16-bit real mode to 32-bit protected mode and display strings directly to the VGA text buffer.
+## 背景
 
-## Background
+Day1 ではリアルモードで"Hello OS!"を表示しましたが、リアルモードにはメモリ制限（1MB）があり、現代 OS の開発には不十分です。本日はプロテクトモードへ移行することで 4GB のメモリ空間とメモリ保護機能を獲得し、本格的な OS 開発の基盤を築きます。
 
-On Day 1, we displayed "Hello OS!" in real mode, but real mode has memory limitations (1MB) that are insufficient for modern OS development. Today we'll transition to protected mode to gain 4GB memory space and memory protection features, establishing the foundation for serious OS development.
+## 新しい概念
 
-## New Concepts
+-   **プロテクトモード**: リアルモードの対義語で、32 ビットの保護された実行環境。メモリ保護と 4GB メモリ空間を提供し、現代 OS の必須機能。「何を」「何から」保護するのか：プログラム間のメモリを保護し、無効なアクセスを防ぐ。
+-   **A20 ライン**: 8086 の設計バグによるアドレスラップアラウンドを修正するためのアドレス線。なぜ有効化が必要か：1MB 超のメモリを正しくアクセスするため。
+-   **GDT (Global Descriptor Table)**: プロテクトモードでのメモリセグメントを定義するテーブル。アクセス権限とサイズを管理。
+-   **CR0.PE**: CR0 レジスタの PE ビットで、プロテクトモードを有効化するスイッチ。
+-   **VGA テキストバッファ / 0xB8000**: ビデオメモリに直接書き込むことで画面表示を実現。なぜこのアドレス：メモリマップド I/O 方式で、ハードウェアがこのアドレスを画面にマップしている。
 
--   **Protected Mode**: Opposite of real mode; 32-bit protected execution environment. Provides memory protection and 4GB memory space, essential for modern OS. "What" is protected "from what": Protects memory between programs and prevents invalid access.
--   **A20 Line**: Address line to fix address wraparound caused by 8086 design bug. Why activation is necessary: To correctly access memory beyond 1MB.
--   **GDT (Global Descriptor Table)**: Table defining memory segments in protected mode. Manages access permissions and sizes.
--   **CR0.PE**: PE bit in CR0 register that switches to enable protected mode.
--   **VGA Text Buffer / 0xB8000**: Screen display by writing directly to video memory. Why this address: Memory-mapped I/O method where hardware maps this address to screen.
+### 学習内容
 
-### Learning Content
+-   A20 ラインの有効化（1MB 超のアドレス空間の利用）
+-   GDT（Global Descriptor Table）の構築
+-   CR0.PE を立ててプロテクトモードに切り替え
+-   Far jump で CS を更新して 32 ビットコードに遷移
+-   VGA テキストバッファ（0xB8000）への直接出力
 
--   A20 line activation (using memory space beyond 1MB)
--   GDT (Global Descriptor Table) construction
--   Setting CR0.PE to switch to protected mode
--   Far jump to update CS and transition to 32-bit code
--   Direct output to VGA text buffer (0xB8000)
+## タスクリスト
 
-## Task List
+-   [ ] A20 ラインを有効化して 1MB 超のアドレス空間を利用可能にする
+-   [ ] GDT（null/code/data セグメント）を構築してメモリ管理の基盤を作る
+-   [ ] CR0.PE=1 を設定してプロテクトモードに移行する
+-   [ ] far jump で CS を更新して 32 ビットコードへ遷移する
+-   [ ] 32 ビット側でセグメントレジスタとスタックを設定する
+-   [ ] VGA バッファ 0xB8000 に文字列を直接書き込んで画面表示する
+-   [ ] QEMU で動作確認する
 
--   [ ] Enable A20 line to make memory space beyond 1MB available
--   [ ] Build GDT (null/code/data segments) to create memory management foundation
--   [ ] Set CR0.PE=1 to transition to protected mode
--   [ ] Use far jump to update CS and transition to 32-bit code
--   [ ] Set segment registers and stack on 32-bit side
--   [ ] Write strings directly to VGA buffer 0xB8000 for screen display
--   [ ] Verify operation in QEMU
+## 前提知識の確認
 
-## Prerequisites Check
+### 必要な知識
 
-### Required Knowledge
+-   Day 01 の内容（リアルモード、BIOS、0x7C00）
+-   16 進数と CPU レジスタの基礎
 
--   Day 01 content (real mode, BIOS, 0x7C00)
--   Hexadecimal basics and CPU register fundamentals
+### 今日新しく学ぶこと
 
-### What's New Today
+-   A20 ラインの役割（8086 互換の 20 ビットアドレスからの拡張）
+-   GDT の構造（ディスクリプタ、アクセスバイト、グラニュラリティ）
+-   CR0 レジスタとプロセッサモード切替
+-   32 ビットコードでのセグメント設定とスタック初期化
 
--   Role of A20 line (extension from 8086-compatible 20-bit addressing)
--   GDT structure (descriptors, access bytes, granularity)
--   CR0 register and processor mode switching
--   Segment setup and stack initialization in 32-bit code
+## なぜプロテクトモードに移行する必要があるのか？
 
-## Why Do We Need to Transition to Protected Mode?
+**リアルモード**は、1978 年の Intel 8086 プロセッサの動作モードです。現代でも互換性のために電源投入時はこのモードから始まります：
 
-**Real Mode** is the operating mode of the Intel 8086 processor from 1978. Even today, systems start in this mode after power-on for compatibility:
+**リアルモードの限界:**
 
-**Real Mode Limitations:**
+-   **16 ビット環境**: CPU が 16 ビット単位でしか処理できない（現代の 32/64 ビットと比較して低速）
+-   **1MB メモリ制限**: アドレス空間が 1MB（0x00000〜0xFFFFF）しか使えない
+-   **セグメント:オフセット**: `セグメント×16＋オフセット`という複雑なアドレス計算
+-   **メモリ保護なし**: プログラムが他のプログラムのメモリを誤って書き換え可能
 
--   **16-bit environment**: CPU can only process in 16-bit units (slow compared to modern 32/64-bit)
--   **1MB memory limit**: Address space limited to 1MB (0x00000~0xFFFFF)
--   **Segment:offset**: Complex address calculation using `segment×16+offset`
--   **No memory protection**: Programs can accidentally overwrite other programs' memory
+**プロテクトモードの利点:**
 
-**Protected Mode Advantages:**
+-   **32 ビット処理**: CPU の本来の性能を発揮（64 ビット CPU でも 32 ビットモードは高速）
+-   **4GB メモリ空間**: 現代アプリケーションに十分なメモリ（32 ビット=2³²=4,294,967,296 バイト）
+-   **メモリ保護**: GDT（後述）によりプログラム間の安全な分離
+-   **現代 OS 基盤**: Linux、Windows 等のマルチタスク OS の基礎技術
 
--   **32-bit processing**: Unleashes CPU's true performance (even 64-bit CPUs run fast in 32-bit mode)
--   **4GB memory space**: Sufficient memory for modern applications (32-bit=2³²=4,294,967,296 bytes)
--   **Memory protection**: Safe program separation via GDT (described later)
--   **Modern OS foundation**: Core technology for multitasking OS like Linux, Windows
+## A20 ラインとは何で、なぜ有効化する必要があるのか？
 
-## What is A20 Line and Why Must It Be Enabled?
+**A20 ライン**は、コンピュータの歴史的な互換性問題から生まれた概念です。
 
-**A20 Line** is a concept born from historical compatibility issues in computers.
+**歴史的背景:**
 
-**Historical Background:**
+-   **8086 CPU (1978 年)**: 20 本のアドレス線（A0-A19）で 1MB（2²⁰=1,048,576 バイト）をアドレス
+-   **16 ビットレジスタの制限**: セグメント:オフセットで最大 1,048,575 バイト + 15 バイト = 1,048,590 バイト
+-   **ラップアラウンド問題**: 1MB 境界を超えるアドレスが 0 番地に戻る（0x100000 → 0x00000）
 
--   **8086 CPU (1978)**: 20 address lines (A0-A19) addressing 1MB (2²⁰=1,048,576 bytes)
--   **16-bit register limitations**: Segment:offset could address maximum 1,048,575 bytes + 15 bytes = 1,048,590 bytes
--   **Wraparound problem**: Addresses beyond 1MB boundary returned to address 0 (0x100000 → 0x00000)
+**80286 以降の問題:**
 
-**Problems from 80286 onwards:**
+-   **24 本のアドレス線**: A20-A23 が追加され 16MB までアドレス可能
+-   **互換性の問題**: 古いソフトがラップアラウンドに依存している
+-   **A20 ゲート**: 20 番目のアドレス線を無効化して 8086 をエミュレート
 
--   **24 address lines**: A20-A23 added, enabling addressing up to 16MB
--   **Compatibility issues**: Old software depended on wraparound behavior
--   **A20 Gate**: Disables 20th address line to emulate 8086
+**現代の OS 開発での対処:**
 
-**Handling in Modern OS Development:**
+-   **A20 有効化**: Fast A20 方式（ポート 0x92）で素早く有効化
+-   **プロテクトモード必須**: 32 ビットアドレス空間を正しく使うために必要
+-   **互換性維持**: BIOS は起動時に A20 を無効状態で開始
 
--   **A20 activation**: Quick activation using Fast A20 method (port 0x92)
--   **Protected mode requirement**: Necessary to correctly use 32-bit address space
--   **Compatibility maintenance**: BIOS starts with A20 disabled
+**A20 ラインの背景:**
 
-**A20 Line Background:**
+-   8086 CPU の設計バグで、1MB 以上のアドレス（例: 0x100000）が 0 番地に戻る「ラップアラウンド」が発生
+-   A20 (Address line 20) を有効化することで、このバグを修正し、フルアドレス空間を利用可能に
+-   無効のままプロテクトモードに入ると、メモリアクセスが破綻し、OS が正常動作しない
 
--   8086 CPU design bug caused "wraparound" where addresses beyond 1MB (e.g., 0x100000) returned to address 0
--   Enabling A20 (Address line 20) fixes this bug and makes full address space available
--   Entering protected mode with A20 disabled causes memory access to break down, preventing proper OS operation
+## GDT（Global Descriptor Table）の役割
 
-## Role of GDT (Global Descriptor Table)
+**GDT**は、プロテクトモードでのメモリ管理の中核となるデータ構造です。
 
-**GDT** is the core data structure for memory management in protected mode.
+**リアルモードとの違い:**
 
-**Difference from Real Mode:**
+-   **リアルモード**: セグメント値 ×16 ＋オフセットの単純計算
+-   **プロテクトモード**: セグメントレジスタが GDT のインデックスを指す
 
--   **Real mode**: Simple calculation of segment value ×16 + offset
--   **Protected mode**: Segment registers point to GDT indices
+**GDT エントリの構成（8 バイト）:**
 
-**GDT Entry Structure (8 bytes):**
+-   **ベースアドレス（32bit）**: セグメントの開始位置
+-   **リミット（20bit）**: セグメントのサイズ（4KB 単位で最大 4GB）
+-   **アクセス権（8bit）**: 実行可/読み書き可/特権レベル等
+-   **フラグ（4bit）**: 32bit/16bit、粒度等の属性
 
--   **Base address (32bit)**: Segment start position
--   **Limit (20bit)**: Segment size (4KB units, maximum 4GB)
--   **Access rights (8bit)**: Executable/read-write/privilege level etc.
--   **Flags (4bit)**: Attributes like 32bit/16bit, granularity
+**基本的な GDT 構成:**
 
-**Basic GDT Configuration:**
+1. **NULL ディスクリプタ（エントリ 0）**: 無効アクセスを検出するダミー
+2. **CODE セグメント（0x08）**: 実行可能コード領域
+3. **DATA セグメント（0x10）**: データ/スタック領域
 
-1. **NULL descriptor (entry 0)**: Dummy to detect invalid access
-2. **CODE segment (0x08)**: Executable code area
-3. **DATA segment (0x10)**: Data/stack area
+**現代 OS との関係:**
 
-**Relationship to Modern OS:**
+-   **Linux**: 最小限の GDT ＋ページング中心
+-   **Windows**: より複雑なセグメント＋ページング
+-   **このプロジェクト**: フラットメモリモデル（全セグメントが 0-4GB）
 
--   **Linux**: Minimal GDT + paging-centric
--   **Windows**: More complex segmentation + paging
--   **This project**: Flat memory model (all segments 0-4GB)
+**GDT とは:**
 
-**What is GDT:**
+-   セグメントの属性（ベースアドレス、サイズ、アクセス権限）を定義するテーブル
+-   プロテクトモードでは、CS/DS などのセグメントレジスタが GDT のエントリを指すようになる
+-   これにより、メモリ領域を保護・分離できる
 
--   Table defining segment attributes (base address, size, access permissions)
--   In protected mode, segment registers like CS/DS point to GDT entries
--   This enables memory area protection and separation
+**なぜ必要:**
 
-**Why necessary:**
+-   リアルモードのセグメント（単なる 16 倍）から、柔軟なメモリ管理へ移行
+-   null ディスクリプタ（エントリ 0）は無効アクセスを防ぐためのダミー
 
--   Transition from real mode segments (simple 16× multiplication) to flexible memory management
--   null descriptor (entry 0) is dummy to prevent invalid access
-
-## Protected Mode Transition Flow
+## プロテクトモード移行の流れ
 
 ```
-Real mode init → A20 enable → GDT register(lgdt) → CR0.PE=1 → far jump → 32bit init → VGA output
+リアルモード初期化 → A20有効化 → GDT登録(lgdt) → CR0.PE=1 → far jump → 32ビット初期化 → VGA出力
 ```
 
-1. Quick A20 activation using Fast A20 (I/O port 0x92)
-2. Define GDT (null/code/data) and register with CPU using `lgdt`
-3. Enable protected mode with `CR0.PE=1`
-4. Load CS with far jump and enter 32-bit code (execute with 32-bit offset)
-5. Set segment registers and stack on 32-bit side, output strings to VGA
+1. Fast A20（I/O ポート 0x92）で A20 を素早く有効化
+2. GDT（null/code/data）を定義し、`lgdt`で CPU に登録
+3. `CR0.PE=1`でプロテクトモードを有効化
+4. far jump で CS をロードし、32 ビットコードへ入る（32 ビットオフセットで実行）
+5. 32 ビット側でセグメントレジスタとスタックを設定し、VGA へ文字列出力
 
-【Note】Minimal GDT and segments
+【メモ】最小構成の GDT とセグメント
 
--   First prepare GDT with null/code/data (null is sentinel).
--   Remember the "ritual" of setting CS=0x08, DS=ES=FS=GS=SS=0x10 (detailed flags can be standard).
+-   GDT はまず null/code/data の 3 本を用意（null は番兵）。
+-   CS=0x08、DS=ES=FS=GS=SS=0x10 に設定する“儀式”を覚えれば OK（詳細フラグは定型で十分）。
 
-## Hands-on: 2-File Configuration
+## 実践: 2 ファイル構成
 
-### Step 1: Project Structure
+### ステップ 1: プロジェクト構造
 
 ```
 day02/
-├── README.md   # This file
-├── boot.s      # 16bit→32bit switching and VGA display, GDT definition
-└── Makefile    # Build and execution
+├── README.md   # このファイル
+├── boot.s      # 16bit→32bit切替とVGA表示, GDT定義
+└── Makefile    # ビルドと実行
 ```
 
-See `day02_completed/` for the completed version.
+完成版は `day02_completed/` を参照してください。
 
-### Step 2: Creating boot.s
+### ステップ 2: boot.s の作成
 
-In `boot.s`, proceed in order: A20→GDT→CR0→far jump→VGA.
+`boot.s` では A20→GDT→CR0→far jump→VGA の順で進みます。
 
 ```assembly
-; boot.s - 16bit→32bit switching and VGA display
+; boot.s - 16bit→32bit 切替とVGA表示
 [org 0x7C00]
 [bits 16]
 
@@ -186,20 +184,20 @@ start:
     mov ss, ax
     mov sp, 0x7C00
 
-    ; Enable A20 (Fast A20: port 0x92)
+    ; A20 有効化（Fast A20: port 0x92）
     in  al, 0x92
     or  al, 0x02
     out 0x92, al
 
-    ; Load GDT
+    ; GDT をロード
     lgdt [gdt_descriptor]
 
-    ; CR0.PE = 1 to enter protected mode
+    ; CR0.PE = 1 でプロテクトモードへ
     mov eax, cr0
     or  eax, 1
     mov cr0, eax
 
-    ; Set CS to 0x08 (code segment) and enter 32bit (specify 32bit offset)
+    ; CS を 0x08（コードセグメント）にして 32bitへ（32bitオフセット指定）
     jmp dword 0x08:pm32_start
 
 [bits 32]
@@ -213,7 +211,7 @@ pm32_start:
     mov ss, ax
     mov esp, 0x00300000
 
-    ; Display to VGA text buffer
+    ; VGA テキストバッファに表示
     mov esi, msg_pm
     mov edi, 0xB8000
     mov bl, 0x0F
@@ -231,9 +229,9 @@ pm32_start:
     hlt
     jmp .halt
 
-; GDT definition (null / code / data)
-; - `0x9A`=code access byte, `0x92`=data access byte
-; - `0xCF`=4KB granularity+32bit flag+upper limit
+; GDT定義（null / code / data）
+; - `0x9A`=コード用アクセスバイト、`0x92`=データ用アクセスバイト
+; - `0xCF`=4KB粒度+32ビットフラグ+上位リミット
 
 align 8
 gdt_start:
@@ -253,7 +251,7 @@ times 510 - ($ - $$) db 0
 dw 0xAA55
 ```
 
-### Step 3: Creating Makefile
+### ステップ 3: Makefile の作成
 
 ```makefile
 # Makefile for Day 02 - Protected Mode Switch
@@ -265,36 +263,36 @@ BOOT_SRC = boot.s
 OS_IMG   = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 02: Protected mode boot image creation complete"
-	@echo "🚀 Execute: make run"
+	@echo "✅ Day 02: プロテクトモードブートイメージ作成完了"
+	@echo "🚀 実行: make run"
 
 $(OS_IMG): $(BOOT_SRC)
-	@echo "🔨 Assembling..."
+	@echo "🔨 アセンブルしています..."
 	$(AS) -f bin $(BOOT_SRC) -o $(OS_IMG)
-	@echo "📏 Checking file size..."
+	@echo "📏 ファイルサイズ確認..."
 	@if [ `wc -c < $(OS_IMG)` -eq 512 ]; then \
-	  echo "✅ 512 bytes OK"; \
+	  echo "✅ 512バイトOK"; \
 	else \
-	  echo "❌ Error: Not 512 bytes"; exit 1; \
+	  echo "❌ エラー: 512バイトではありません"; exit 1; \
 	fi
 
 run: $(OS_IMG)
-	@echo "🚀 Starting in QEMU..."
+	@echo "🚀 QEMUで起動しています..."
 	$(QEMU) -fda $(OS_IMG) -boot a
 
 debug: $(OS_IMG)
-	@echo "🔍 Starting in debug mode..."
+	@echo "🔍 デバッグモードで起動..."
 	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio -monitor tcp:127.0.0.1:4444,server,nowait
 
 clean:
-	@echo "🧹 Cleaning up..."
+	@echo "🧹 クリーンアップ..."
 	rm -f $(OS_IMG)
-	@echo "✅ Complete"
+	@echo "✅ 完了"
 
 .PHONY: all run debug clean
 ```
 
-### Step 4: Build and Execute
+### ステップ 4: ビルドと実行
 
 ```bash
 cd day02
@@ -303,26 +301,26 @@ make all
 make run
 ```
 
-If "Now in 32-bit protected mode! Hello VGA!" appears in white text on the QEMU screen, it's successful.
+QEMU 画面に白文字で「Now in 32-bit protected mode! Hello VGA!」が表示されれば成功です。
 
-## Code Explanation
+## コード解説
 
-### Detailed GDT Structure Diagram
+### GDT 構造の詳細図解
 
-#### GDT Memory Layout
+#### GDT メモリレイアウト
 
 ```
-Overall GDT diagram:
+GDT全体図:
 +---------+--------+--------+--------+--------+--------+--------+--------+
 | Byte 7  | Byte 6 | Byte 5 | Byte 4 | Byte 3 | Byte 2 | Byte 1 | Byte 0 |
 +---------+--------+--------+--------+--------+--------+--------+--------+
 
-Entry 0 (NULL): 0x0000000000000000
+エントリ0（NULL）: 0x0000000000000000
 +---------+--------+--------+--------+--------+--------+--------+--------+
 |   00    |   00   |   00   |   00   |   00   |   00   |   00   |   00   |
 +---------+--------+--------+--------+--------+--------+--------+--------+
 
-Entry 1 (CODE): 0x00CF9A000000FFFF
+エントリ1（CODE）: 0x00CF9A000000FFFF
 +---------+--------+--------+--------+--------+--------+--------+--------+
 |   00    |   CF   |   9A   |   00   |   00   |   00   |   FF   |   FF   |
 +---------+--------+--------+--------+--------+--------+--------+--------+
@@ -330,171 +328,171 @@ Entry 1 (CODE): 0x00CF9A000000FFFF
 Base[31:24] Flags   Access Base[23:16]  Address      0xFFFFF
             0xC=Granular+32bit  0x9A    0x00000000   4GB
 
-Entry 2 (DATA): 0x00CF92000000FFFF
+エントリ2（DATA）: 0x00CF92000000FFFF
 +---------+--------+--------+--------+--------+--------+--------+--------+
 |   00    |   CF   |   92   |   00   |   00   |   00   |   FF   |   FF   |
 +---------+--------+--------+--------+--------+--------+--------+--------+
 ```
 
-#### Selector to GDT Entry Conversion
+#### セレクタから GDT エントリへの変換
 
 ```
-Selector structure:
+セレクタ構造:
 15                    3  2   0
 +--------------------+--+---+
-|      Index         |TI|RPL|
+|      インデックス    |TI|RPL|
 +--------------------+--+---+
 
-Example: CS = 0x08 = 0000 1000
-- Index = 1 → GDT entry 1 (CODE)
-- TI = 0 (use GDT)
-- RPL = 0 (kernel privilege)
+例: CS = 0x08 = 0000 1000
+- インデックス = 1 → GDTエントリ1（CODE）
+- TI = 0（GDT使用）
+- RPL = 0（カーネル特権）
 
-Example: DS = 0x10 = 0001 0000
-- Index = 2 → GDT entry 2 (DATA)
-- TI = 0 (use GDT)
-- RPL = 0 (kernel privilege)
+例: DS = 0x10 = 0001 0000
+- インデックス = 2 → GDTエントリ2（DATA）
+- TI = 0（GDT使用）
+- RPL = 0（カーネル特権）
 ```
 
-#### Access Rights Details
+#### アクセス権の詳細
 
-| Field               | Code(0x9A) | Data(0x92) | Meaning                   |
-| ------------------- | ---------- | ---------- | ------------------------- |
-| **P** (Present)     | 1          | 1          | Segment present           |
-| **DPL** (Privilege) | 00         | 00         | Kernel level              |
-| **S** (Type)        | 1          | 1          | Code/data segment         |
-| **E** (Executable)  | 1          | 0          | Executable/non-executable |
-| **DC**              | 0          | 0          | Expand direction          |
-| **RW**              | 1          | 1          | Read/write allowed        |
-| **A** (Accessed)    | 0          | 0          | 0 when unused             |
+| フィールド         | コード(0x9A) | データ(0x92) | 意味                    |
+| ------------------ | ------------ | ------------ | ----------------------- |
+| **P** (Present)    | 1            | 1            | セグメント存在          |
+| **DPL** (特権)     | 00           | 00           | カーネルレベル          |
+| **S** (タイプ)     | 1            | 1            | コード/データセグメント |
+| **E** (実行可)     | 1            | 0            | 実行可能/不可           |
+| **DC**             | 0            | 0            | 拡張方向                |
+| **RW**             | 1            | 1            | 読み書き可能            |
+| **A** (アクセス済) | 0            | 0            | 未使用時は 0            |
 
-#### Flag Details
+#### フラグの詳細
 
-| Bit     | Name        | Value | Meaning          |
-| ------- | ----------- | ----- | ---------------- |
-| **G**   | Granularity | 1     | 4KB page units   |
-| **D/B** | Size        | 1     | 32-bit segment   |
-| **L**   | 64-bit      | 0     | 32-bit mode      |
-| **AVL** | Available   | 0     | OS available bit |
+| ビット  | 名前      | 値  | 意味                |
+| ------- | --------- | --- | ------------------- |
+| **G**   | 粒度      | 1   | 4KB ページ単位      |
+| **D/B** | サイズ    | 1   | 32 ビットセグメント |
+| **L**   | 64 ビット | 0   | 32 ビットモード     |
+| **AVL** | 使用可能  | 0   | OS 使用可能ビット   |
 
-#### Protected Mode Transition Flow
+#### プロテクトモード移行の流れ
 
 ```
-Step 1: GDT preparation
-[Real mode] Register gdt_start address with lgdt
+ステップ1: GDT準備
+[リアルモード] gdt_start のアドレスを lgdt で登録
 
-Step 2: PE setting
-CR0.PE = 1 enables protected mode
+ステップ2: PE設定
+CR0.PE = 1 でプロテクトモード有効化
 
-Step 3: Segment update
-far jump 0x08:pm32_start updates CS (to 32-bit mode)
+ステップ3: セグメント更新
+far jump 0x08:pm32_start でCS更新（32ビットモードへ）
 
-Step 4: Data segment setting
-mov ax, 0x10  ; Data segment selector
-mov ds, ax    ; Update all data segments
+ステップ4: データセグメント設定
+mov ax, 0x10  ; データセグメントセレクタ
+mov ds, ax    ; すべてのデータセグメントを更新
 ```
 
-### CR0.PE and Far Jump
+### CR0.PE と Far Jump
 
--   Immediately after setting PE with `mov cr0, eax`, 16-bit instructions might remain in instruction prefetch, so use far jump to explicitly reload CS and transition to 32-bit code.
+-   `mov cr0, eax` で PE を立てた直後、命令プリフェッチに 16 ビット命令が残る可能性があるため、far jump で CS を明示的に再読み込みし、32 ビットコードへ移行します。
 
-## Troubleshooting
+## トラブルシューティング
 
-1. Screen remains black
-    - Check if `lgdt` operand (`gdt_descriptor`) is correct
-    - Far jump selector (0x08), `[bits 32]` position
-2. Reset occurs/system hangs
-    - A20 activation (port 0x92) procedure
-    - Order of procedures before/after CR0.PE setting
-3. Garbled characters
-    - Writing to VGA buffer 0xB8000 in 2-byte units (character+attribute)?
+1. 画面が真っ黒のまま
+    - `lgdt` のオペランド（`gdt_descriptor`）が正しいか
+    - far jump のセレクタ（0x08）、`[bits 32]` の位置
+2. リセットがかかる/ハングする
+    - A20 有効化（0x92 ポート）の手順
+    - CR0.PE 設定前後の手順の順序
+3. 文字化けする
+    - VGA バッファ 0xB8000 に 2 バイト（文字+属性）で書いているか
 
-## Segment Protection Mechanism
+## セグメント保護機能の仕組み
 
-### How Code and Data Segments Work with Same Address Range
+### 同じアドレス範囲でコードセグメントとデータセグメントが機能する方法
 
-Even though both code segment (0x08) and data segment (0x10) cover the same address range (0x00000000-0xFFFFFFFF), they have **different access permissions**:
+コードセグメント（0x08）とデータセグメント（0x10）は確かに同じアドレス範囲（0x00000000-0xFFFFFFFF）をカバーしていますが、**異なるアクセス権限**を持っています：
 
-**Code Segment (0x08)**: Access byte `0x9A`
+**コードセグメント（0x08）**: アクセスバイト `0x9A`
 
--   ✅ Executable (can run instructions)
--   ✅ Readable (can read constants)
--   ❌ **Not writable** (cannot modify)
+-   ✅ 実行可能（命令を実行できる）
+-   ✅ 読み取り可能（定数を読める）
+-   ❌ **書き込み不可**（変更できない）
 
-**Data Segment (0x10)**: Access byte `0x92`
+**データセグメント（0x10）**: アクセスバイト `0x92`
 
--   ✅ Readable (can read data)
--   ✅ Writable (can modify data)
--   ❌ **Not executable** (cannot run as code)
+-   ✅ 読み取り可能（データを読める）
+-   ✅ 書き込み可能（データを変更できる）
+-   ❌ **実行不可**（コードとして実行できない）
 
-### Practical Examples
+### 実践的な例
 
 ```assembly
-; Same physical address 0x1000, different access depending on segment used:
+; 同じ物理アドレス 0x1000 でも、使用するセグメントによってアクセスが変わる：
 
-; Using code segment selector (CS = 0x08)
-jmp 0x08:0x1000        ; ✅ Execute instructions at 0x1000 (allowed)
-mov eax, cs:[0x1000]   ; ✅ Read constant from 0x1000 (allowed)
-mov cs:[0x1000], eax   ; ❌ PROTECTION FAULT! (write to code segment)
+; コードセグメントセレクタ使用（CS = 0x08）
+jmp 0x08:0x1000        ; ✅ 0x1000で命令実行（許可）
+mov eax, cs:[0x1000]   ; ✅ 0x1000から定数読み取り（許可）
+mov cs:[0x1000], eax   ; ❌ 保護違反！（コードセグメントへの書き込み）
 
-; Using data segment selector (DS = 0x10)
-mov eax, [0x1000]      ; ✅ Read data from 0x1000 (allowed)
-mov [0x1000], eax      ; ✅ Write data to 0x1000 (allowed)
-jmp 0x10:0x1000        ; ❌ PROTECTION FAULT! (execute from data segment)
+; データセグメントセレクタ使用（DS = 0x10）
+mov eax, [0x1000]      ; ✅ 0x1000からデータ読み取り（許可）
+mov [0x1000], eax      ; ✅ 0x1000にデータ書き込み（許可）
+jmp 0x10:0x1000        ; ❌ 保護違反！（データセグメントからの実行）
 ```
 
-### Default Segment Selection
+### デフォルトセグメント選択
 
-When no segment is explicitly specified, CPU automatically chooses based on instruction type:
+セグメントを明示的に指定しない場合、CPU は命令の種類に基づいて自動的に選択します：
 
-| Instruction Type       | Default Segment | Example                      |
-| ---------------------- | --------------- | ---------------------------- |
-| **Instruction fetch**  | CS (Code)       | `call function`, `jmp label` |
-| **Stack operations**   | SS (Stack)      | `push eax`, `pop ebx`        |
-| **Data access**        | DS (Data)       | `mov eax, [0x1000]`          |
-| **String destination** | ES (Extra)      | `stosb`, `rep movsb`         |
+| 命令の種類         | デフォルトセグメント | 例                           |
+| ------------------ | -------------------- | ---------------------------- |
+| **命令フェッチ**   | CS（コード）         | `call function`, `jmp label` |
+| **スタック操作**   | SS（スタック）       | `push eax`, `pop ebx`        |
+| **データアクセス** | DS（データ）         | `mov eax, [0x1000]`          |
+| **文字列の送信先** | ES（エキストラ）     | `stosb`, `rep movsb`         |
 
 ```assembly
-; These instructions use different default segments:
-mov eax, 0x1000        ; Immediate value (no memory access)
-mov eax, [0x1000]      ; DS:0x1000 (data read)
-push eax               ; SS:ESP (stack write)
-call 0x2000            ; CS:0x2000 (code execution)
+; これらの命令は異なるデフォルトセグメントを使用：
+mov eax, 0x1000        ; 即値代入（メモリアクセスなし）
+mov eax, [0x1000]      ; DS:0x1000（データ読み取り）
+push eax               ; SS:ESP（スタック書き込み）
+call 0x2000            ; CS:0x2000（コード実行）
 ```
 
-### Memory Protection in Action
+### メモリ保護の実際の動作
 
-This mechanism provides **memory protection** even with overlapping address ranges:
+この仕組みにより、アドレス範囲が重複していても**メモリ保護**が実現されます：
 
 ```
-Physical Memory Address 0x1000:
-┌─────────────────────────────────┐
-│     Same Memory Location        │
-├─────────────────────────────────┤
-│ Via CS (0x08): Read/Execute OK  │
-│                Write FORBIDDEN  │
-├─────────────────────────────────┤
-│ Via DS (0x10): Read/Write OK    │
-│                Execute FORBIDDEN│
-└─────────────────────────────────┘
+物理メモリアドレス 0x1000:
+┌─────────────────────────────────────┐
+│      同じメモリ位置                 │
+├─────────────────────────────────────┤
+│ CS (0x08) 経由: 読み取り/実行OK     │
+│                 書き込み禁止        │
+├─────────────────────────────────────┤
+│ DS (0x10) 経由: 読み取り/書き込みOK │
+│                 実行禁止            │
+└─────────────────────────────────────┘
 ```
 
-This is the foundation of modern OS security - preventing code injection and protecting critical system code from accidental modification.
+これは現代 OS セキュリティの基盤となる技術で、コードインジェクションを防ぎ、重要なシステムコードを偶発的な変更から保護します。
 
-## Understanding Check
+## 理解度チェック
 
-1. What happens if A20 line is disabled?
-2. What do GDT access bytes 0x9A/0x92 mean respectively?
-3. What could happen if PE=1 is set without inserting far jump?
-4. Why not use BIOS interrupts after 32-bit transition?
-5. Why can't you execute code from a data segment even if it contains valid instructions?
-6. What happens when you try to write to a code segment?
+1. A20 ラインが無効だと何が起きる？
+2. GDT のアクセスバイト 0x9A/0x92 はそれぞれどんな意味？
+3. Far jump を挟まずに PE=1 にしたらどうなる可能性がある？
+4. 32 ビット移行後に BIOS 割り込みを使用しない理由は？
+5. 有効な命令が含まれていても、なぜデータセグメントからコードを実行できないのか？
+6. コードセグメントに書き込もうとするとどうなるか？
 
-## Preparing for Next Steps
+## 次のステップの準備
 
--   ✅ A20 line activation
--   ✅ GDT construction and registration
--   ✅ Protected mode switching and far jump
--   ✅ Direct VGA buffer output
+-   ✅ A20 ライン有効化
+-   ✅ GDT の構築と登録
+-   ✅ プロテクトモード切替と far jump
+-   ✅ VGA バッファ直接出力
 
-Tomorrow's Day 03 will develop VGA text display further, handling colors, cursor, scrolling, etc.
+明日の Day 03 では、VGA テキスト表示を発展させ、色・カーソル・スクロールなどを扱います。

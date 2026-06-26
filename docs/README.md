@@ -1,0 +1,35 @@
+# Mini OS ドキュメント
+
+本ディレクトリは Mini OS プロジェクトのドキュメントを格納します。
+
+## 📚 正本（まずここを読む）
+
+| ドキュメント | 内容 |
+|---|---|
+| [**ARCHITECTURE_ja.md**](ARCHITECTURE_ja.md) | **公式アーキテクチャ正本**。完成形（`day12_completed/`）の設計・内部構造・動作原理を網羅。システム全体を理解したい場合は本ファイルを読んでください。 |
+
+## 📎 参考資料（`reference/`）
+
+以下は開発過程で**複数の LLM に生成させた比較検証用資料**です。視点や表現の違いを参照したい場合に利用してください。内容の正確性・網羅性は正本（`ARCHITECTURE_ja.md`）が優先します。いずれも生成時点（day99 基準）の記述を含みます。
+
+### アーキテクチャ解説（モデル比較）
+
+| ファイル | 生成元 | 特徴 |
+|---|---|---|
+| [reference/arch_codex_ja.md](reference/arch_codex_ja.md) | Codex | コードを軸に「どのファイルがどの関心事か」を俯瞰する紙芝居形式 |
+| [reference/arch_gemini_ja.md](reference/arch_gemini_ja.md) | Gemini | メンテナ向けの詳細設計解説 |
+| [reference/arch_glm_ja.md](reference/arch_glm_ja.md) | GLM | Mermaid チャートを多用した視覚的解説 |
+
+### 品質分析レポート
+
+| ファイル | 生成元 | 特徴 |
+|---|---|---|
+| [reference/QUALITY_ja.md](reference/QUALITY_ja.md) | Gemini | 最新コードベースの品質評価 |
+| [reference/quality_gemini_ja.md](reference/quality_gemini_ja.md) | Gemini | デザイン原則（SRP 等）観点の分析 |
+
+---
+
+## 関連ドキュメント
+
+- カリキュラム本体: ルートの [`README_ja.md`](../README_ja.md) および各 `dayNN/README_ja.md`
+- 学習の到達点（完成形コード）: `day12_completed/`

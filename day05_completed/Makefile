@@ -1,4 +1,4 @@
-# Makefile for Day 05 Completed - IDT/例外 + Cカーネル（boot分割）
+# Makefile for Day 05 Completed - Cベースのシリアル + VGA（boot分割）
 
 AS   = nasm
 CC   = i686-elf-gcc
@@ -10,7 +10,6 @@ CFLAGS = -ffreestanding -m32 -nostdlib -fno-stack-protector -fno-pic -O2 -Wall -
 
 BOOT    = boot/boot.s
 ENTRY   = boot/kernel_entry.s
-INTRASM = boot/interrupt.s
 KERNELC = kernel.c
 
 BOOTBIN = boot.bin
@@ -19,8 +18,8 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 05 Completed: 割り込みインフラ（IDT/例外）ビルド完了"
-	@echo "🚀 実行: make run"
+	@echo "✅ Day 05 Completed: Cベース構成でビルド完了"
+	@echo "🚀 実行: make run  （シリアルは端末に表示されます）"
 
 $(BOOTBIN): $(BOOT)
 	$(AS) -f bin $(BOOT) -o $(BOOTBIN)
@@ -28,14 +27,11 @@ $(BOOTBIN): $(BOOT)
 kernel_entry.o: $(ENTRY)
 	$(AS) -f elf32 $(ENTRY) -o $@
 
-interrupt.o: $(INTRASM)
-	$(AS) -f elf32 $(INTRASM) -o $@
-
 kernel.o: $(KERNELC) vga.h io.h
 	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
 
-$(KELF): kernel_entry.o interrupt.o kernel.o
-	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o interrupt.o kernel.o
+$(KELF): kernel_entry.o kernel.o
+	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o kernel.o
 
 $(KBIN): $(KELF)
 	$(OBJCOPY) -O binary $(KELF) $(KBIN)
@@ -45,10 +41,16 @@ $(OS_IMG): $(BOOTBIN) $(KBIN)
 	truncate -s 1440K $(OS_IMG)
 
 run: $(OS_IMG)
+	@echo "🚀 QEMUで起動（-serial stdio）..."
 	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
 
+debug: $(OS_IMG)
+	@echo "🔍 モニタ付きで起動..."
+	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio -monitor tcp:127.0.0.1:4444,server,nowait
+
 clean:
-	rm -f $(BOOTBIN) kernel_entry.o interrupt.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
+	@echo "🧹 クリーンアップ..."
+	rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
+	@echo "✅ 完了"
 
-.PHONY: all run clean
-
+.PHONY: all run debug clean

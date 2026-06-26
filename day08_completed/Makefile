@@ -1,4 +1,4 @@
-# Makefile for Day 08 Completed - コンテキストスイッチ
+# Makefile for Day 08 Completed - TCB/READYリスト
 
 AS   = nasm
 CC   = i686-elf-gcc
@@ -10,7 +10,6 @@ CFLAGS = -ffreestanding -m32 -nostdlib -fno-stack-protector -fno-pic -O2 -Wall -
 
 BOOT    = boot/boot.s
 ENTRY   = boot/kernel_entry.s
-CTXASM  = boot/context_switch.s
 KERNELC = kernel.c
 
 BOOTBIN = boot.bin
@@ -19,7 +18,7 @@ KBIN    = kernel.bin
 OS_IMG  = os.img
 
 all: $(OS_IMG)
-	@echo "✅ Day 08 Completed: コンテキストスイッチ ビルド完了"
+	@echo "✅ Day 08 Completed: TCB/READYデモ ビルド完了"
 	@echo "🚀 実行: make run"
 
 $(BOOTBIN): $(BOOT)
@@ -28,14 +27,11 @@ $(BOOTBIN): $(BOOT)
 kernel_entry.o: $(ENTRY)
 	$(AS) -f elf32 $(ENTRY) -o $@
 
-context_switch.o: $(CTXASM)
-	$(AS) -f elf32 $(CTXASM) -o $@
-
 kernel.o: $(KERNELC) vga.h io.h
 	$(CC) $(CFLAGS) -c $(KERNELC) -o $@
 
-$(KELF): kernel_entry.o context_switch.o kernel.o
-	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o context_switch.o kernel.o
+$(KELF): kernel_entry.o kernel.o
+	$(LD) -m elf_i386 -Ttext 0x00010000 -e kernel_entry -o $(KELF) kernel_entry.o kernel.o
 
 $(KBIN): $(KELF)
 	$(OBJCOPY) -O binary $(KELF) $(KBIN)
@@ -45,9 +41,9 @@ $(OS_IMG): $(BOOTBIN) $(KBIN)
 	truncate -s 1440K $(OS_IMG)
 
 run: $(OS_IMG)
-	$(QEMU) -drive file=$(OS_IMG),format=raw,if=floppy -boot a -serial stdio
+	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio
 
 clean:
-	rm -f $(BOOTBIN) kernel_entry.o context_switch.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
+	rm -f $(BOOTBIN) kernel_entry.o kernel.o $(KELF) $(KBIN) $(OS_IMG)
 
 .PHONY: all run clean

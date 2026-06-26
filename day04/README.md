@@ -1,300 +1,124 @@
-# Day 04: Serial Port Debug (freestanding C + Inline Assembly) 🔧
+# Day 04: VGA テキスト表示 🎨
 
----
+## 本日のゴール
 
-🌐 Available languages:
+Day 03 で動くようになった freestanding C 環境の上に、**VGA テキストモードの表示ドライバ**を実装する。`vga_putc` / `vga_puts` / 色指定 / スクリーンクリア / スクロール / ハードウェアカーソル制御を備えた、`printf` の代替となる出力 API を完成させる。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## SWE 向けモチベーション
 
-## Today's Goal
+VGA テキストモードは **メモリマップド I/O** の最も古典的で分かりしい例です。デバイスの状態を「ポート I/O（outb/inb）」で、データを「メモリへの書き込み」で扱うという2種類のハードウェア通信方式が1つのデバイスに同居しています。これは Linux の frame buffer ドライバや console サブシステムの原型であり、MMIO（Memory Mapped I/O）の概念を実感を持って理解する最初のステップです。また「1文字 = 2バイト（文字コード+属性）」という固定フォーマットのパース/構築は、バイナリプロトコルを扱う SWE に共通の訓練になります。
 
-Build a debug environment using UART serial port and implement a dual output system for VGA and serial.
+## 前提と依存
 
-## Background
+- **Day 03**（freestanding C、`kmain`、`boot/boot.s` + `boot/kernel_entry.s` の分割構成）が完成していること。
+- 32ビット C（ポインタ、配列、ヘッダと実装の分離）の基礎。
+- Day 03 の成果物（boot.s / kernel_entry.s / kernel.c / Makefile）を出発点にする。
 
-While we achieved C language transition in Day 3, debug capabilities limited to VGA screen have limitations. Today we'll build debug infrastructure using serial ports, creating a more efficient OS development environment with log saving and continuous output capabilities.
+## 新しい概念
 
-## New Concepts
+### VGA テキストバッファ（0xB8000）
 
--   **I/O Ports (inb, outb)**: Mechanism for communicating with hardware using address space (I/O space) separate from memory space. inb instruction reads data from port, outb writes. Basic method for hardware control.
--   **Inline Assembly**: GCC feature for writing x86 assembly directly within C code. Essential for hardware access.
+VGA テキストモードでは、画面の 1 文字が **2 バイト**で構成され、画面全体が `0xB8000` から始まる連続メモリ（フレームバッファ）にマップされています。
 
-## Learning Content
+- 下位 8bit = 文字コード（ASCII）
+- 上位 8bit = 属性（下位 4bit=前景色 / 上位 4bit=背景色）
 
--   **Inline Assembly Basics**: Writing x86 assembly within C code
--   **I/O Port Access**: Wrapping `in`/`out` instructions with C functions
--   **UART Programming**: Controlling 8250/16550 series COM1 (0x3F8)
--   **Hardware Initialization**: Baud rate, framing, FIFO settings
--   **Polling Method**: Waiting for transmission ready via LSR register
--   **Debug Infrastructure**: Parallel output system for VGA + serial
-
-【Note】Wait for transmission register empty (LSR 0x20)
-
--   If bit 0x20 in UART's Line Status Register is 1, transmission register is empty and can write 1 character.
--   The wait `while(!(inb(COM1+5) & 0x20)) {}` is checking this confirmation.
-
-## Task List
-
--   [ ] Create io.h header file and implement inb/outb functions with inline assembly
--   [ ] Understand UART registers and initialize COM1 port
--   [ ] Implement serial output functions in kernel.c and transmit data using polling method
--   [ ] Build parallel output system for VGA and serial
--   [ ] Use QEMU -serial option to verify serial output
--   [ ] Complete dual output environment as debug infrastructure
-
-## Prerequisites Check
-
-### Required Knowledge
-
--   **Day 01-02**: Boot, GDT, protected mode switching
--   **Day 03**: freestanding C, VGA control, C + assembly cooperation
--   **C Language**: Basic syntax, functions, header files
--   **Hardware Concepts**: I/O ports, registers, polling
-
-### What's New
-
--   **Inline Assembly**: Writing x86 instructions within C code
--   **Constraint Description**: Writing GCC assembly constraints (`"=a"`, `"Nd"`, etc.)
--   **I/O Ports**: Addressing method different from memory mapping
--   **UART Protocol**: Serial communication basics (baud rate, framing)
-
-## Approach and Configuration
-
-```
-├── boot
-│   ├── boot.s           # 16-bit: A20, GDT (defined in same file), load kernel with INT 13h, PE switch
-│   └── kernel_entry.s   # 32-bit: segment/stack setup → kmain()
-├── boot.s               # (auxiliary/comparison standalone version if available)
-├── io.h                 # inb/outb/io_wait (C inline asm)
-├── kernel.c             # Initialize and output VGA and COM1 in C
-├── Makefile             # Link boot and kernel to generate os.img
-├── README.md            # This file
-└── vga.h                # VGA API (C)
+例: 位置 `(row, col)` のセルは `0xB8000 + 2*(row*80+col)` に `uint16_t` として書き込む。
+```c
+uint16_t cell = (uint8_t)c | ((attr & 0xFF) << 8);
 ```
 
-See `day04_completed/` for the completed version. In `day04_completed`, the kernel builds `kernel.c`.
+### ハードウェアカーソル（CRTC レジスタ）
 
-## Implementation Guide
+画面上の点滅カーソル位置は VGA の CRTC レジスタ（インデックスポート `0x3D4`、データポート `0x3D5`）で制御します。インデックス 14/15 に位置の上位/下位バイトを書き込みます。これが初めての **ポート I/O（outb）** の本格利用です。
 
-### 1. Understanding Inline Assembly
+## 実装ガイド
 
-**Why inline assembly is necessary:**
+完成形は `day04_completed/` を参照。以下が構築するレイヤ。
 
-In OS development, we need to directly control hardware, but there are operations that cannot be done with C language alone:
-
--   Reading/writing I/O ports (`in`/`out` instructions)
--   Direct CPU register manipulation
--   Special memory access
-
-Using inline assembly allows us to achieve these low-level operations within C code.
-
-**Inline assembly** is a GCC feature for writing x86 assembly directly within C code. It's essential for hardware access in freestanding C environments.
-
-#### GCC Inline Assembly Syntax
+### ステップ 1: vga.h（API 設計）
 
 ```c
-__asm__("instruction" : output constraints : input constraints : clobbered registers);
-```
-
-#### Constraint Description Meanings
-
--   `"=a"`: Store output in EAX register
--   `"a"`: Get input from EAX register
--   `"Nd"`: Use input as EDX register or immediate value
--   `%%al`: Escape register name (% → %%)
-
-### 2. io.h (I/O Port Access Functions)
-
-```c
-// io.h — I/O port helpers for freestanding C
+// vga.h — VGAテキストモード制御（C, freestanding）
 #pragma once
 #include <stdint.h>
 
-// Read 1 byte from I/O port
-static inline uint8_t inb(uint16_t port) {
-    uint8_t value;
-    __asm__ volatile ("inb %1, %0" : "=a"(value) : "Nd"(port));
-    return value;
-}
+#define VGA_WIDTH  80
+#define VGA_HEIGHT 25
 
-// Write 1 byte to I/O port
-static inline void outb(uint16_t port, uint8_t value) {
-    __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
-}
+typedef enum {
+    VGA_BLACK=0, VGA_BLUE, VGA_GREEN, VGA_CYAN, VGA_RED, VGA_MAGENTA, VGA_BROWN, VGA_LIGHT_GRAY,
+    VGA_DARK_GRAY, VGA_LIGHT_BLUE, VGA_LIGHT_GREEN, VGA_LIGHT_CYAN, VGA_LIGHT_RED, VGA_PINK, VGA_YELLOW, VGA_WHITE
+} vga_color_t;
 
-// I/O delay (ensure compatibility with old PCs)
-static inline void io_wait(void) {
-    __asm__ volatile ("outb %%al, $0x80" : : "a"(0));
-}
+void vga_init(void);
+void vga_clear(void);
+void vga_set_color(vga_color_t fg, vga_color_t bg);
+void vga_move_cursor(uint16_t x, uint16_t y);
+void vga_putc(char c);
+void vga_puts(const char* s);
 ```
 
-**Important points**:
+### ステップ 2: kernel.c（VGA 実装）
 
--   `volatile`: Prevents compiler optimization (I/O has side effects)
--   `static inline`: Avoids duplicate definition of header file functions
--   Constraint `"Nd"`: Specify port number in EDX or as immediate value
-
-### 2. kernel.c (COM1 Initialization and Transmission)
+`vga.h` の API を実装する。要点:
+- `vga_entry(c, attr)` で文字+属性を1ワードに合成。
+- `vga_putc`: 改行（`\n`）で次行へ、右端で折り返し、`cursor_y >= VGA_HEIGHT` で1行スクロールアップ。
+- `vga_move_cursor`: CRTC レジスタへ `outb` で位置を反映。
 
 ```c
-#include <stdint.h>
-#include "io.h"
-#include "vga.h"
-
-#define COM1 0x3F8
-
-static void serial_init(void){
-    outb(COM1+1, 0x00);      // IER=0 (disable interrupts)
-    outb(COM1+3, 0x80);      // LCR: DLAB=1
-    outb(COM1+0, 0x03);      // DLL=3 (115200/38400)
-    outb(COM1+1, 0x00);      // DLM=0
-    outb(COM1+3, 0x03);      // LCR: 8N1, DLAB=0
-    outb(COM1+2, 0xC7);      // FCR: Enable FIFO/clear/14B threshold
-    outb(COM1+4, 0x0B);      // MCR: RTS/DTR/OUT2
+void vga_putc(char c) {
+    if (c == '\n') { /* 改行 + 必要ならスクロール */ }
+    VGA_MEM[cursor_y * VGA_WIDTH + cursor_x] = vga_entry(c, color);
+    if (++cursor_x >= VGA_WIDTH) { cursor_x = 0; cursor_y++; /* scroll */ }
+    vga_move_cursor(cursor_x, cursor_y);
 }
+void vga_puts(const char* s) { while (*s) vga_putc(*s++); }
+```
 
-static void serial_putc(char c){
-    while(!(inb(COM1+5) & 0x20)){} // LSR bit5 (THR empty)
-    outb(COM1+0, (uint8_t)c);
-}
+`outb` は `io.h` でインラインアセンブリにより提供する（Day 05 でシリアル制御にも再利用）。
 
-static void serial_puts(const char* s){
-    while(*s){
-        if(*s=='\n') serial_putc('\r');
-        serial_putc(*s++);
-    }
-}
+### ステップ 3: kmain でデモ
 
-void kmain(void){
+```c
+void kmain(void) {
     vga_init();
-    vga_puts("Day 04: Serial debug (C)\n");
-    serial_init();
-    serial_puts("COM1: Hello from C!\\r\\n");
+    vga_puts("Day 04: C-based VGA driver\n");
+    vga_set_color(VGA_YELLOW, VGA_BLACK);
+    vga_puts("Hello from C!\n");
 }
 ```
 
-**Implementation points**:
-
--   **Polling method**: Monitor LSR's THR Empty bit
--   **CRLF conversion**: Convert Unix `\n` to Windows-compatible `\r\n`
--   **Type safety**: Cast `char` to `uint8_t` for port output
-
-### 3. UART Registers and Serial Communication Theory
-
-#### COM1 Port Mapping
-
-| Offset | Register    | Description                                    |
-| ------ | ----------- | ---------------------------------------------- |
-| COM1+0 | THR/RBR/DLL | Transmit/receive buffer, divisor low when DLAB |
-| COM1+1 | IER/DLM     | Interrupt enable, divisor high when DLAB       |
-| COM1+2 | FCR/IIR     | FIFO control/interrupt identification          |
-| COM1+3 | LCR         | Line control (data length, parity, DLAB)       |
-| COM1+4 | MCR         | Modem control (RTS, DTR, OUT)                  |
-| COM1+5 | LSR         | Line status (transmit/receive ready, errors)   |
-
-#### Initialization Procedure Theory
-
-1. **Disable interrupts**: OS hasn't prepared interrupt handlers yet
-2. **Set DLAB**: Switch to divisor register access mode
-3. **Set baud rate**: 38400bps = 115200 ÷ 3
-4. **Set framing**: 8-bit data, no parity, 1 stop bit
-5. **Enable FIFO**: Improve efficiency with buffering
-6. **Modem control**: Basic handshake signal settings
-
-#### I/O Port vs Memory Map
-
-| Method         | Access Method            | Example        | Characteristics               |
-| -------------- | ------------------------ | -------------- | ----------------------------- |
-| **I/O Port**   | `in`/`out` instructions  | UART, PIC, PIT | Dedicated address space, fast |
-| **Memory Map** | Normal memory read/write | VGA (0xB8000)  | Uses part of memory space     |
-
-### 5. boot/boot.s (Architecture Continuation)
-
-Continue the architecture established in Day 03:
-
--   **GDT Integration**: Define directly in boot.s
--   **Kernel Loading**: Load from sector 2 to `0x00100000` with `INT 13h`
--   **Protected Mode**: `CR0.PE=1` → `jmp 0x08:kernel_entry` (without `dword`)
-
-### 6. boot/kernel_entry.s (Bridge to C)
-
--   **Segment Setup**: Set DS/ES/FS/GS/SS to `0x10`
--   **Stack Initialization**: Set `ESP` to appropriate position
--   **C Function Call**: Execute `extern kmain` with `call`
-
-### 7. Makefile (C Compilation Support)
-
-Support C compilation same as Day 03:
-
-```makefile
-OBJECTS = boot/boot.o boot/kernel_entry.o kernel.o
-TARGET = os.img
-
-$(TARGET): $(OBJECTS)
-	ld -T linker.ld -o kernel.elf $(OBJECTS)
-	objcopy -O binary kernel.elf kernel.bin
-	cat boot.bin kernel.bin > $(TARGET)
-
-kernel.o: kernel.c io.h vga.h
-	i686-elf-gcc -ffreestanding -c kernel.c -o kernel.o
-```
-
-## Build and Execute
+## 動作確認
 
 ```bash
-cd day04
-make clean
-make all
-make run        # -serial stdio outputs serial to terminal
+cd day04_completed
+make run    # QEMU が起動し、カラフルなテキストとカーソル移動が確認できる
 ```
 
-Expected behavior:
+- 画面クリア → "Day 04: C-based VGA driver" → 黄色で "Hello from C!" が表示されれば成功。
+- QEMU モニタ（`Ctrl+Alt+2`）で `x/20x 0xB8000` を実行すると、書き込んだセルが見える。
 
--   Screen (VGA): "Day 04: Serial debug (C)"
--   Terminal (serial): "COM1: Hello from C!"
+## トラブルシューティング
 
-## Code Explanation: UART Registers
+**🔴 VGA 出力されない**
+- 原因1: `0xB8000` への書き込み失敗（アドレス間違い）。
+- 原因2: 2バイト構造を1バイトで書いている。
+- 解決: `*((uint16_t*)0xB8000) = 'A' | (0x0F << 8);`（`uint16_t` で書く）。
 
--   `COM1+0 (THR/DLL)` Transmit hold/divisor low when DLAB
--   `COM1+1 (IER/DLM)` Interrupt enable/divisor high when DLAB
--   `COM1+2 (FCR)` FIFO control (enable/clear/threshold)
--   `COM1+3 (LCR)` Data length/stop/parity/DLAB
--   `COM1+4 (MCR)` RTS/DTR/OUT/loopback
--   `COM1+5 (LSR)` Transmit/receive status (bit5: THR empty)
+**🔴 文字化け / カーソル異常**
+- null 終端の確認、CRTC レジスタへの書き込み順序（インデックス→データ）の確認。
 
-## Troubleshooting
+**🔴 `implicit declaration of function 'outb'`**
+- `io.h` をインクルード、または `extern void outb(uint16_t,uint8_t);` 宣言。
 
-1. Serial output not displayed
-    - Starting with `-serial stdio`?
-    - Waiting for LSR bit5 before transmission?
-    - Is QEMU enabling COM1? (enabled by default)
-2. Garbled characters
-    - Is divisor ratio (DLL/DLM) correct? (38400→3)
-    - Is 8N1 setting (LCR=0x03)?
-3. Black screen
-    - GDT selector (CS=0x08, DS=0x10) and far jump order
+## 理解度チェック
 
-## Understanding Check
+1. VGA の1文字は何バイトで、どういう内訳か？
+2. ハードウェアカーソルの位置はどの I/O ポートで制御する？
+3. スクロール時にどのメモリ領域をどう移動する？
+4. メモリマップド I/O とポート I/O の違いを、VGA のどの機能がそれぞれ使っているかで説明せよ。
 
-### Inline Assembly Understanding
+## 次の day へのブリッジ
 
-1. What does each part of `__asm__ volatile ("inb %1, %0" : "=a"(value) : "Nd"(port))` mean?
-2. Why is `volatile` necessary for I/O operations?
-3. Can you explain the difference between GCC constraints `"=a"` and `"Nd"`?
-
-### UART Programming Understanding
-
-1. Why is it necessary to wait for LSR bit5 (THR empty)?
-    - **Answer**: If next data is sent before transmission buffer is empty, data will be overwritten and lost
-2. What's the meaning of timing for setting/clearing DLAB bit?
-    - **Answer**: DLAB=1 switches to divisor setting mode, DLAB=0 switches to normal transmit/receive mode
-3. Can you explain the difference between VGA and serial (memory map vs I/O port)?
-    - **Answer**: VGA uses memory access to address 0xB8000, serial uses `in`/`out` instructions to port 0x3F8
-
-## Next Steps
-
--   ✅ UART initialization and transmission
--   ✅ I/O port access basics
--   ✅ Dual debug (VGA+serial)
-
-Next we'll learn to handle asynchronous events using interrupts (IDT) and timers (PIT).
+VGA で「目に見える出力」ができました。次は **Day 05: シリアルポート** でポート I/O（outb/inb）を本格的に使い、ホスト側へログを送れる「見えない出力経路」を確立します。これは以降のデバッグ（割り込み・スケジューラの観察）に不可欠な基盤になります。

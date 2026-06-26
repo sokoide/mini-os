@@ -1,350 +1,158 @@
-# Day 03: VGA Text Display (C Transition + Boot Split) 🎨
+# Day 03: freestanding C への移行 🔧
 
----
+## 本日のゴール
 
-🌐 Available languages:
+**Day 03 から開発手法が大きく変わります。** Day 01-02 のシンプルなアセンブリファイル構成から、C 言語を中心とした本格的な OS 開発に移行します。アセンブリで書いたブート処理から初めて C の関数 `kmain()` に制御を移し、**C コードが実行できること**を最小限の動作確認で示します。本格的な VGA ドライバは次の Day 04 で実装します。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## SWE 向けモチベーション
 
-## Today's Learning Goals
+「アセンブリで書かれていた内核を高級言語（C）で書き直す」という移行は、OS 開発の歴史そのものです（初期の UNIX もアセンブリから C で書き直されました）。この日は、その移行の**接合点**を作ります。具体的には、(1) ブートコード（16bit → 32bit）を役割ごとに `boot/boot.s`・`boot/kernel_entry.s` に分割し、(2) 32bit の世界で `call kmain` によって C 関数を呼び出す、という構造を作ります。「アセンブリと高級言語の境界（ABI: 呼出規約・スタック配置）」を自分の手で設計する経験は、FFI やシステムコール境界を理解する SWE に直結します。
 
-**Development methodology changes significantly from Day 03.** We transition from the simple assembly file structure of Day 01-02 to full-scale OS development centered on C language.
+## 前提と依存
 
-### Why Transition to C Language?
+- **Day 01-02**（ブート、GDT、プロテクトモード移行）が完成していること。
+- 32ビット C（ポインタ、配列、ヘッダと実装の分離）の基礎。
+- Day 02 の成果物（プロテクトモードへ移行するブートセクタ）を出発点にする。
 
-**Limitations of Assembly-Centric Development in Day 01-02**
+## 新しい概念
 
--   **Rapid complexity increase**: With VGA control, interrupt handling, memory management, etc., maintenance becomes difficult with assembly alone
--   **Lack of type safety**: Bugs in register and memory operations are hard to detect
--   **Reduced readability**: Code intent becomes unclear, unsuitable for team development
+### なぜ C 言語に移行するのか？
 
-**Benefits of C Language Transition**
+**Day 01-02 のアセンブリ中心開発の限界**
 
--   **Type system**: Clear design through structures and pointer types
--   **Function division**: Modularized functionality with testable structure
--   **Maintainability**: Clear expression of intent through high-level language
--   **Practicality**: Real OS like Linux and Windows are developed in C/C++
+- **複雑性の急増**: VGA 制御、割り込み処理、メモリ管理等が加わると、アセンブリだけでは保守困難
+- **型安全性の欠如**: レジスタやメモリ操作でのバグが発見しにくい
+- **可読性の低下**: コードの意図が分かりにくく、チーム開発に不向き
 
-From Day 03, we implement primarily in C. To approach the final form (day99_completed) structure, boot-related files are split into `boot/boot.s` (16-bit) and `boot/kernel_entry.s` (32-bit entry). GDT is integrated into `boot.s`. Display is implemented in C with `kernel.c` and `vga.h`.
+**C 言語移行の利点**
 
-## Learning Content
+- **型システム**: 構造体、ポインタ型による設計明確化
+- **関数分割**: 機能をモジュール化し、テストしやすい構造
+- **保守性**: 高レベル言語による意図の明確な表現
+- **実用性**: Linux、Windows 等、実際の OS は C/C++で開発
 
--   VGA text buffer (0xB8000) structure and C access
--   Hardware cursor control (CRTC registers)
--   Color attributes (foreground/background) and text drawing API
--   Implementation of newline, scrolling, and cursor advance
--   Role separation in boot stages (16-bit loader vs 32-bit kernel entry)
+### freestanding C 環境の理解
 
-【Note】VGA text 1 character is 2 bytes
+通常の C プログラム（例: Hello World）は OS の上に乗って動作します：
 
--   Lower 8 bits are character code, upper 8 bits are attributes (lower 4 bits = foreground color / upper 4 bits = background color).
--   Example: `uint16_t cell = (uint8_t)c | ((attr & 0xFF) << 8);` written to `0xB8000 + 2*(row*80+col)`.
+- OS がメモリ管理、ファイル I/O、標準ライブラリを提供
+- `main()` が自動的に呼ばれる
+- `printf()` や `malloc()` が使える
 
-## Task List
+OS 開発では、自分自身が OS になるため：
 
--   [ ] Create vga.h header file and define VGA control API
--   [ ] Create kernel.c file and implement kmain() function
--   [ ] Integrate GDT in boot.s and add kernel loading to memory
--   [ ] Create kernel_entry.s for 32-bit environment initialization
--   [ ] Update Makefile for C code compilation and linking
--   [ ] Display strings by writing directly to VGA buffer in freestanding C environment
--   [ ] Verify operation in QEMU and confirm colorful text display
+- 標準ライブラリが存在しない（OS 自体が提供するもの）
+- メモリ、I/O を直接制御する必要がある
+- `kmain()` を手動で呼び出す
 
-## Prerequisites Check
+#### 通常の C 環境 vs freestanding C 環境
 
-### Required Knowledge
+| 項目               | 通常の C 環境                             | freestanding C 環境（OS 開発）          |
+| ------------------ | ----------------------------------------- | --------------------------------------- |
+| **標準ライブラリ** | `printf`, `malloc`, `strlen` 等が利用可能 | **利用不可** - 自分で実装が必要         |
+| **メモリ管理**     | `malloc`/`free` でヒープ管理              | **自前実装** - 物理メモリ直接管理       |
+| **文字列操作**     | `strlen`, `strcpy` 等が利用可能           | **自前実装** - 1 文字ずつ手動処理       |
+| **I/O 操作**       | `printf` でコンソール出力                 | **ハードウェア直接制御** - VGA/シリアル |
+| **起動処理**       | `main()` から自動開始                     | **ブートローダーが手動呼び出し**        |
+| **リンカ**         | OS がメモリ配置を決定                     | **明示的にメモリ配置を指定**            |
 
--   Day 01-02 (boot, GDT, protected mode)
--   32-bit C (pointers, arrays, header and implementation separation)
-
-### What's New Today
-
--   **freestanding C environment** (no libc, -ffreestanding/-nostdlib)
--   Direct C access to low-level I/O
--   Role separation between 16-bit loader and 32-bit kernel
-
-## Understanding freestanding C Environment
-
-**Normal C Environment vs OS Development Environment Differences:**
-
-Normal C programs (e.g., Hello World) run on top of an OS:
-
--   OS provides memory management, file I/O, standard library
--   `main()` is called automatically
--   `printf()` and `malloc()` are available
-
-In OS development, you become the OS itself:
-
--   Standard library doesn't exist (OS itself provides it)
--   Need to directly control memory and I/O
--   Must manually call `kmain()`
-
-**Why freestanding C is necessary:**
-
--   To write code that runs in an environment without OS
--   To directly operate hardware (VGA, serial)
--   To design for operation with minimal resources
-
-From Day 03 onwards, we develop in a "freestanding C" environment that differs greatly from normal C development environments.
-
-### Normal C Environment vs freestanding C Environment
-
-| Item                  | Normal C Environment                         | freestanding C Environment (OS Development)                          |
-| --------------------- | -------------------------------------------- | -------------------------------------------------------------------- |
-| **Standard Library**  | `printf`, `malloc`, `strlen`, etc. available | **Not available** - must implement yourself                          |
-| **Memory Management** | Heap management with `malloc`/`free`         | **Custom implementation** - direct physical memory management        |
-| **String Operations** | `strlen`, `strcpy`, etc. available           | **Custom implementation** - manual character-by-character processing |
-| **I/O Operations**    | Console output with `printf`                 | **Direct hardware control** - VGA/serial                             |
-| **Startup Process**   | Automatic start from `main()`                | **Bootloader manual call**                                           |
-| **Linker**            | OS decides memory placement                  | **Explicitly specify memory placement**                              |
-
-### Elements Prohibited/Unavailable in freestanding C
+#### freestanding C で禁止/利用不可な要素
 
 ```c
-// ❌ The following cannot be used at all
-
-// Standard I/O functions
-printf("Hello");           // → Replace with vga_puts("Hello")
-scanf("%d", &num);         // → Replace with getchar()
-
-// Memory management functions
-int* ptr = malloc(100);    // → Use arrays or direct physical memory management
-free(ptr);
-
-// String functions
-strlen(str);               // → Manually loop and count
-strcpy(dest, src);         // → Manually copy character by character
-
-// Math functions
-sin(3.14);                 // → Custom implementation or avoid use
+// ❌ 以下は一切使用できません
+printf("Hello");           // → vga_puts("Hello") で代替（Day 04）
+int* ptr = malloc(100);    // → 配列または物理メモリ直接管理
+strlen(str);               // → 手動でループしてカウント
 ```
 
-### Functions Requiring Custom Implementation in freestanding C
-
-```c
-// ✅ You implement functions like these yourself
-
-// VGA output (printf replacement)
-void vga_puts(const char* s);
-void vga_putc(char c);
-
-// String operations (strlen replacement)
-int my_strlen(const char* s) {
-    int len = 0;
-    while (s[len] != '\0') len++;
-    return len;
-}
-
-// I/O port operations (OS-specific)
-void outb(uint16_t port, uint8_t value);
-uint8_t inb(uint16_t port);
-```
-
-### Special Flags for Compilation
+#### コンパイル時の特別なフラグ
 
 ```bash
-# Compiler flags for freestanding C
--ffreestanding   # Don't assume standard library
--nostdlib       # Don't link standard library
--fno-stack-protector  # Disable stack protection features
--m32            # Generate 32-bit code
+-ffreestanding          # 標準ライブラリを仮定しない
+-nostdlib               # 標準ライブラリをリンクしない
+-fno-stack-protector    # スタック保護機能を無効化
+-m32                    # 32ビットコード生成
 ```
 
-### Why These Constraints Exist
+#### 制約がある理由
 
-**Why do these constraints exist?**
+1. **OS がまだ存在しない**: `printf` や `malloc` は OS 機能に依存している
+2. **メモリ管理未実装**: ヒープ管理システムがまだない
+3. **ハードウェア直接制御**: VGA、シリアル等を直接操作する必要
+4. **最小限の実行環境**: ブートローダーから呼び出される最小環境
 
-1. **OS doesn't exist yet**: `printf` and `malloc` depend on OS functionality
-2. **Memory management not implemented**: No heap management system yet
-3. **Direct hardware control**: Need to directly operate hardware like VGA, serial
-4. **Minimal execution environment**: Minimal environment called from bootloader
-
-## Approach and Overall Picture
+## 進め方と全体像
 
 ```
-boot/boot.s (16-bit):
-  - A20 enable, GDT definition and registration, load kernel with BIOS INT 0x13
-  - CR0.PE=1 → far jump (32-bit offset) to kernel_entry
+boot/boot.s（16bit）:
+  - A20有効化、GDT定義と登録、BIOSのINT 0x13でカーネルを読み込み
+  - CR0.PE=1 → far jump（32bitオフセット）で kernel_entry へ
 
-boot/kernel_entry.s (32-bit):
-  - Segment setup, stack initialization, call extern kmain
+boot/kernel_entry.s（32bit）:
+  - セグメント設定、スタック初期化、extern kmain を call
 
-kernel.c: kmain() uses vga.h API for display
-vga.h: C API for VGA control (clear/cursor/color/output/scroll)
+kernel.c: kmain() を実装（Day 03 では最小動作確認、Day 04 で VGA 本格実装）
 ```
 
-## Hands-on: VGA Layer Implementation in C
+ブート関連は最終形（day12_completed）の構成に合わせ、`boot/boot.s`（16bit ローダ）と `boot/kernel_entry.s`（32bit エントリ）に分割します。GDT は `boot.s` 内へ統合します。
 
-### Step 1: Project Structure
+## 実装ガイド
 
-**Actual day03 directory structure** (learning version with TODOs):
+完成形は `day03_completed/` を参照。Day 03 では VGA ドライバを作らず、**C が動いたことの最小確認**にとどめます。
 
-```
-day03/
-├── README.md            # This file (learning guide)
-├── boot/
-│   ├── boot.s           # 16-bit: A20, GDT integration, load kernel with INT 0x13, to PE
-│   └── kernel_entry.s   # 32-bit: segment/stack setup → kmain()
-├── kernel.c             # kmain and VGA demo (C implementation)
-├── vga.h                # VGA text display API definition
-└── Makefile             # Link boot and kernel to create os.img
-```
-
-**day03_completed structure** (completed version for reference):
+### ステップ 1: プロジェクト構造
 
 ```
 day03_completed/
-├── README.md            # Technical explanation of completed version
 ├── boot/
-│   ├── boot.s           # Same as above (working implementation)
-│   └── kernel_entry.s   # Same as above (working implementation)
-├── kernel.c             # Complete implementation version
-├── vga.h                # Complete API definition
-├── io.h                 # I/O port operation helpers
-└── Makefile             # Completed version build script
+│   ├── boot.s           # 16bit: A20, GDT統合, INT 0x13 で kernel 読込, PE へ
+│   └── kernel_entry.s   # 32bit: セグメント/スタック設定 → kmain()
+├── kernel.c             # kmain（最小動作確認のみ）
+└── Makefile             # boot と kernel を連結して os.img を作成
 ```
 
-**Learning approach**:
+### ステップ 2: kernel.c（最小動作確認）
 
-1. Try implementing yourself in `day03/`
-2. Refer to `day03_completed/` when stuck
-3. Compare both to deepen understanding
-
-### Step 2: vga.h (API Design)
-
-First define the API in the header (implementation in kernel.c, or split to vga.c in future).
+まだ VGA ドライバはありません。VRAM 先頭（`0xB8000`）に直接文字を書き込んで、C コードが実行されていることを視覚的に確認します。
 
 ```c
-// vga.h — VGA text mode control (C, freestanding)
-#pragma once
 #include <stdint.h>
-
-#define VGA_WIDTH  80
-#define VGA_HEIGHT 25
-
-typedef enum {
-    VGA_BLACK=0, VGA_BLUE, VGA_GREEN, VGA_CYAN, VGA_RED, VGA_MAGENTA, VGA_BROWN, VGA_LIGHT_GRAY,
-    VGA_DARK_GRAY, VGA_LIGHT_BLUE, VGA_LIGHT_GREEN, VGA_LIGHT_CYAN, VGA_LIGHT_RED, VGA_PINK, VGA_YELLOW, VGA_WHITE
-} vga_color_t;
-
-void vga_init(void);
-void vga_clear(void);
-void vga_set_color(vga_color_t fg, vga_color_t bg);
-void vga_move_cursor(uint16_t x, uint16_t y);
-void vga_putc(char c);
-void vga_puts(const char* s);
-```
-
-### Step 3: kernel.c (Implementation and Entry)
-
-Implement and use vga.h API with `kmain()` as entry (no libc).
-
-```c
-// kernel.c — kmain and VGA implementation (minimal)
-#include <stdint.h>
-#include "vga.h"
-
 static volatile uint16_t* const VGA_MEM = (uint16_t*)0xB8000;
-static uint16_t cursor_x = 0, cursor_y = 0;
-static uint8_t color = 0x0F; // white on black
 
-static inline uint16_t vga_entry(char c, uint8_t color) {
-    return (uint16_t)c | ((uint16_t)color << 8);
+static inline uint16_t vga_entry(char c, uint8_t attr) {
+    return (uint16_t)c | ((uint16_t)attr << 8);
 }
-
-void vga_set_color(vga_color_t fg, vga_color_t bg) {
-    color = (uint8_t)fg | ((uint8_t)bg << 4);
-}
-
-void vga_move_cursor(uint16_t x, uint16_t y) {
-    cursor_x = x; cursor_y = y;
-    uint16_t pos = y * VGA_WIDTH + x;
-    outb(0x3D4, 14);
-    outb(0x3D5, (pos >> 8) & 0xFF);
-    outb(0x3D4, 15);
-    outb(0x3D5, pos & 0xFF);
-}
-
-void vga_clear(void) {
-    for (uint16_t y=0; y<VGA_HEIGHT; ++y) {
-        for (uint16_t x=0; x<VGA_WIDTH; ++x) {
-            VGA_MEM[y*VGA_WIDTH + x] = vga_entry(' ', color);
-        }
-    }
-    vga_move_cursor(0,0);
-}
-
-static void vga_newline(void) {
-    cursor_x = 0;
-    if (++cursor_y >= VGA_HEIGHT) {
-        // simple scroll up
-        for (uint16_t y=1; y<VGA_HEIGHT; ++y)
-            for (uint16_t x=0; x<VGA_WIDTH; ++x)
-                VGA_MEM[(y-1)*VGA_WIDTH + x] = VGA_MEM[y*VGA_WIDTH + x];
-        for (uint16_t x=0; x<VGA_WIDTH; ++x)
-            VGA_MEM[(VGA_HEIGHT-1)*VGA_WIDTH + x] = vga_entry(' ', color);
-        cursor_y = VGA_HEIGHT-1;
-    }
-}
-
-void vga_putc(char c) {
-    if (c=='\n') { vga_newline(); vga_move_cursor(cursor_x, cursor_y); return; }
-    VGA_MEM[cursor_y*VGA_WIDTH + cursor_x] = vga_entry(c, color);
-    if (++cursor_x >= VGA_WIDTH) vga_newline();
-    vga_move_cursor(cursor_x, cursor_y);
-}
-
-void vga_puts(const char* s) { while (*s) vga_putc(*s++); }
-
-void vga_init(void) { vga_set_color(VGA_WHITE, VGA_BLACK); vga_clear(); }
-
-// I/O port helpers (planned for future as io.h / provided by boot side here)
-extern void outb(uint16_t port, uint8_t val);
 
 void kmain(void) {
-    vga_init();
-    vga_puts("Day 03: C-based VGA driver\n");
-    vga_set_color(VGA_YELLOW, VGA_BLACK);
-    vga_puts("Hello from C!\n");
+    VGA_MEM[0] = vga_entry('C', 0x0F);  // 白文字/黒背景
+    VGA_MEM[1] = vga_entry('!', 0x0F);
+    while (1) { __asm__ volatile("hlt"); }
 }
 ```
 
-Note: `outb` is provided by boot side (or implemented in C as io.h in later sessions).
+画面左上に "C!" と表示されれば、アセンブリ → C の制御移行が成功した証拠です。
 
-### Step 4: boot/boot.s (16-bit, GDT integration, kernel load, PE switch)
+### ステップ 3: boot/boot.s（16bit, GDT 統合, kernel 読込, PE 切替）
 
-`boot.s` performs the following:
-
--   Disable interrupts, enable A20 (0x92)
--   Define GDT "within file" and register with `lgdt`
--   Load sector 2 onwards from disk to `0x00100000` with BIOS `INT 0x13` (simple fixed sector count)
--   KERNEL_SECTORS sectors are loaded into memory. For 127 sectors, 127 x 512 bytes = 63.5 kilobytes are loaded
--   Enter protected mode with `CR0.PE=1` → `jmp dword 0x08:kernel_entry` to 32-bit
-
-Pseudocode (main parts):
+- 割り込み無効化、A20 有効化（0x92）
+- GDT を「ファイル内に定義」し、`lgdt` で登録
+- BIOS `INT 0x13` でディスク第 2 セクタ以降を `0x00100000` へ読み込み
+- `CR0.PE=1` でプロテクトモードへ → `jmp dword 0x08:kernel_entry` で 32bit へ
 
 ```assembly
 [org 0x7C00]
 [bits 16]
 start:
   cli
-  ; A20 enable (0x92)
   in al, 0x92
   or al, 0x02
-  out 0x92, al
-
-  ; load GDT (defined below in this file)
+  out 0x92, al          ; A20 enable
   lgdt [gdt_descriptor]
-
-  ; read kernel: INT 0x13 (CHS/LBA simple, fixed sector count for learning)
-  ; destination ES:BX = 0x1000:0x0000 => 0x00100000
-  ; ...(details expanded in future sessions)
-
-  ; enter protected mode
+  ; ... INT 0x13 で kernel を 0x00100000 へ読込 ...
   mov eax, cr0
   or eax, 1
   mov cr0, eax
-  jmp dword 0x08:kernel_entry   ; 32-bit far jump
+  jmp dword 0x08:kernel_entry   ; 32bit far jump
 
 ; --- GDT ---
 align 8
@@ -361,9 +169,7 @@ times 510 - ($ - $$) db 0
 dw 0xAA55
 ```
 
-### Step 5: boot/kernel_entry.s (32-bit, kmain call)
-
-`kernel_entry.s` is 32-bit code that calls `extern kmain` after segment setup/stack initialization.
+### ステップ 4: boot/kernel_entry.s（32bit, kmain 呼び出し）
 
 ```assembly
 [bits 32]
@@ -384,81 +190,36 @@ kernel_entry:
   jmp .halt
 ```
 
-### Step 6: Makefile
+### ステップ 5: Makefile
 
--   Please refer to `day03_complete/Makefile`.
+`day03_completed/Makefile` を参照。`kernel.c` を `-ffreestanding -nostdlib` でコンパイルし、`kernel_entry.s` とリンク、`boot.bin` と連結して `os.img` を生成します。
 
-## Troubleshooting
-
-### Day 03 Specific Issues
-
-**🔴 kmain() is not called**
-
--   **Cause**: Mismatch between kernel link address and load destination address
--   **Check method**:
-    ```bash
-    objdump -h kernel.elf | grep text  # Check link address
-    hexdump -C os.img | head -20       # Check loaded content
-    ```
--   **Solution**: Match `ld -Ttext 0x00010000` with boot.s load destination
-
-**🔴 C Compilation Error**
-
--   **Problem**: Using `printf` or `strlen`
--   **Solution**: Replace with custom functions for freestanding C
-    ```c
-    // ❌ printf("Hello");
-    // ✅ vga_puts("Hello");
-    ```
-
-**🔴 Link Error**
-
--   **Problem**: `_start` symbol not found
--   **Solution**: Declare `global kernel_entry` in kernel_entry.s and link with `-e kernel_entry`
-
-**🔴 No VGA Output**
-
--   **Cause 1**: Failed to write to VGA buffer address (0xB8000)
--   **Cause 2**: Writing 2-byte structure (character+attribute) as 1 byte
--   **Check method**: Execute `x/20x 0xB8000` in QEMU monitor
--   **Solution**:
-    ```c
-    // ❌ *((char*)0xB8000) = 'A';
-    // ✅ *((uint16_t*)0xB8000) = 'A' | (0x0F << 8);
-    ```
-
-### Common Errors in freestanding C Environment
-
-**Compilation errors**:
+## 動作確認
 
 ```bash
-# ❌ undefined reference to `printf`
-# → Use vga_puts()
-
-# ❌ undefined reference to `strlen`
-# → Manual implementation or use existing implementation
-
-# ❌ implicit declaration of function 'outb'
-# → Include io.h or extern declaration
+cd day03_completed
+make run    # QEMU が起動し、画面左上に "C!" が表示されれば成功
 ```
 
-**Runtime errors**:
+## トラブルシューティング
 
--   **Hang**: Check if `hlt` instruction is at end of infinite loop
--   **Garbled characters**: Check null-terminated strings
--   **Cursor abnormal**: Check CRTC register write order
+**🔴 kmain() が呼び出されない**
+- 原因: カーネルのリンクアドレスと読み込み先アドレスの不一致
+- 確認: `objdump -h kernel.elf | grep text` と boot.s の読み込み先を一致（`ld -Ttext 0x00010000`）
 
-## Understanding Check
+**🔴 C コンパイルエラー（`undefined reference to printf/strlen`）**
+- 解決: freestanding C 用の自作関数に置き換え（`printf` → Day 04 の `vga_puts`）
 
-1. What are the differences between freestanding C and normal C execution environment?
-2. How many bytes is 1 VGA character and what's the breakdown?
-3. Which I/O ports control hardware cursor position?
-4. Which memory areas are moved how during scrolling?
+**🔴 リンクエラー（`_start` シンボルが見つからない）**
+- 解決: `kernel_entry.s` で `global kernel_entry` を宣言し、`-e kernel_entry` でリンク
 
-## Next Steps
+## 理解度チェック
 
--   ✅ C-based VGA drawing API
--   ✅ Initialization and output from kmain()
--   ✅ Minimal boot.s (GDT/mode switch/call)
+1. freestanding C と通常の C 実行環境の違いを3つ挙げよ。
+2. アセンブリ（kernel_entry.s）から C の関数を呼び出すために必要なのは何か？（シンボル名・スタック・呼出規約の観点）
+3. `-ffreestanding -nostdlib` フラグはそれぞれ何を抑えるか？
+4. なぜ `main()` ではなく `kmain()` なのか？
 
-In future sessions, we'll organize kernel loading and placement, provide I/O helpers (outb/inb), improve build/link (introduce linker scripts), and proceed to interrupts and timers.
+## 次の day へのブリッジ
+
+C コードが動くようになったら、次は **Day 04: VGA テキスト表示** で本格的な出力ドライバ（`vga_putc` / `vga_puts` / 色 / スクロール）を実装します。これにより、以降のデバッグ出力（`printf` 相当）が可能になります。

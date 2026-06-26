@@ -1,4 +1,4 @@
-; Day 06 完成版 - 例外ISR + IRQ0スタブと共通ハンドラ（32ビット）
+; Day 06 完成版 - 例外ISRスタブと共通ハンドラ（32ビット）
 
 [bits 32]
 
@@ -40,11 +40,3 @@ isr_common:
 	ISR_NOERR 6    ; Invalid Opcode
 	ISR_ERR   13   ; General Protection Fault
 	ISR_ERR   14   ; Page Fault
-
-	;      IRQ0（タイマ、再マッピング後はベクタ32）
-	global irq0
-
-irq0:
-	push dword 0; ダミーerr
-	push dword 32; ベクタ番号（PIC再マッピング後のIRQ0）
-	jmp  isr_common

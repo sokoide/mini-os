@@ -18,7 +18,7 @@
 
 ## ビルドと実行
 
-### 主要なコマンド (day99_completed または各日ディレクトリにて)
+### 主要なコマンド (day12_completed または各日ディレクトリにて)
 - `make all`: OSイメージ (`os.img`) のビルド
 - `make run`: QEMU で OS を起動 (GUIあり、シリアルデバッグ出力あり)
 - `make run-nogui`: GUIなしで QEMU を起動 (シリアル出力のみ)
@@ -35,7 +35,7 @@ make test > makeout.txt 2>&1
 
 ## 開発規約と構造
 
-### ディレクトリ構造 (day99_completed 例)
+### ディレクトリ構造 (day12_completed 例)
 - `src/`: ソースコード
   - `boot/`: ブートローダ、割り込みスタブ、エントリポイント
   - `kernel.c`: スケジューラおよびカーネルの中核
@@ -43,7 +43,7 @@ make test > makeout.txt 2>&1
 - `include/`: ヘッダーファイル
 - `linker/`: リンカースクリプト (`kernel.ld`)
 - `tests/`: テストコードとモックハードウェア
-- `docs/`: 設計ドキュメント (`ARCHITECTURE_ja.md` 等)
+- (設計ドキュメントはルート `../docs/` を参照: `ARCHITECTURE_ja.md` 正本・`reference/` 比較資料)
 
 ### コーディングスタイル
 - **言語**: C (gnu99), NASM (elf32/bin)

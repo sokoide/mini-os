@@ -1,471 +1,469 @@
-# Day 01: PC Boot Fundamentals 🖥️
+# Day 01: PC ブートの基礎 🖥️
 
----
+## 本日のゴール
 
-🌐 Available languages:
+x86 コンピュータの起動プロセスを理解し、最小限のブートローダーを作成して"Hello OS!"を表示する。
 
-[English](./README.md) | [日本語](./README_ja.md)
+## SWE 向けモチベーション
 
-## Today's Goal
+「プログラムがそもそもどう起動するか」は、アプリ開発では OS が隠してくれる盲点です。電源 ON → BIOS/UEFI → ブートローダ → カーネル、という制御の連鎖は GRUB や systemd-boot、組込みの U-Boot でも同じ構造です。この日はその「一番最初の1歩」を自分の手で書き、ファームウェアと OS の境界（何がハードウェア責任で何がソフトウェア責任か）を実感します。
 
-Understand the x86 computer boot process and create a minimal bootloader to display "Hello OS!".
+## 背景
 
-## Background
+OS 開発の第一歩は、コンピュータの起動プロセスを理解することです。電源投入から BIOS がハードウェアを初期化し、ブートデバイスから最初のプログラム（ブートローダー）を読み込んで実行します。この日はその基礎を学び、実際に動作するブートローダーを作成します。
 
-The first step in OS development is understanding the computer boot process. From power-on, BIOS initializes hardware and loads and executes the first program (bootloader) from the boot device. Today we'll learn these fundamentals and create an actual working bootloader.
+## 新しい概念
 
-## New Concepts
+-   **ブートセクタ (Boot Sector)**: BIOS が最初に読み込む 512 バイトのデータ領域。なぜ 512 バイトなのかはハードウェアの制約によるもので、BIOS がこれをメモリの 0x7C00 番地にロードして実行を開始する。
+-   **org 0x7c00**: アセンブラのディレクティブで、プログラムがメモリの 0x7C00 番地に配置されることを宣言。このアドレスは歴史的経緯として CP/M-86 との互換性を保つために選ばれた。
+-   **リアルモード**: 16 ビット実行環境。現代の 64 ビット CPU でも電源投入時はこのモードから始まる。
 
--   **Boot Sector**: 512-byte data area that BIOS loads first. The 512-byte size is due to hardware constraints, and BIOS loads this into memory at address 0x7C00 and begins execution.
--   **org 0x7c00**: Assembler directive declaring that the program is placed at memory address 0x7C00. This address was chosen for historical reasons to maintain compatibility with CP/M-86.
--   **Real Mode**: 16-bit execution environment. Even modern 64-bit CPUs start in this mode after power-on.
+## 学習内容
 
-## Learning Content
+-   **x86 PC の起動プロセス** - コンピュータが電源投入後にどう動作するか
+-   **BIOS（Basic Input/Output System）** - ハードウェアと OS の橋渡し
+-   **MBR（Master Boot Record）** - 最初に実行されるプログラム
+-   **16 ビットリアルモード** - x86 の歴史的な実行モード
+-   **アセンブリ言語の基礎** - CPU と直接対話する言語
 
--   **x86 PC boot process** - How computers operate after power-on
--   **BIOS (Basic Input/Output System)** - Bridge between hardware and OS
--   **MBR (Master Boot Record)** - First program to execute
--   **16-bit real mode** - Historical x86 execution mode
--   **Assembly language basics** - Language for direct CPU communication
+## タスクリスト
 
-## Task List
+-   [ ] boot.s ファイルを作成し、アセンブリコードを記述する
+-   [ ] BIOS 割り込みを使って画面に文字を表示する関数を実装する
+-   [ ] 512 バイトのブートシグネチャ（0xAA55）を追加する
+-   [ ] Makefile を作成してビルド環境を構築する
+-   [ ] QEMU でブートローダーを実行して"Hello OS!"が表示されることを確認する
 
--   [ ] Create boot.s file and write assembly code
--   [ ] Implement function to display characters on screen using BIOS interrupts
--   [ ] Add 512-byte boot signature (0xAA55)
--   [ ] Create Makefile to build environment
--   [ ] Execute bootloader in QEMU and confirm "Hello OS!" is displayed
+## 前提知識の確認
 
-## Prerequisites Check
+### 必要な知識
 
-### Required Knowledge
+-   **C 言語の基礎**: 関数、変数、ポインタの概念
+-   **16 進数**: 0x7C00、0x10 などの表記に慣れておく
+-   **コンピュータの基本概念**: CPU、メモリ、レジスタの存在を知っている
 
--   **C language basics**: Concepts of functions, variables, pointers
--   **Hexadecimal**: Familiarity with notation like 0x7C00, 0x10
--   **Basic computer concepts**: Awareness of CPU, memory, registers
+### 今日新しく学ぶこと
 
-### What's New Today
+-   **x86 レジスタ**: CPU 内部の高速記憶装置
+-   **セグメントレジスタ**: メモリ管理の古い方式
+-   **BIOS 割り込み**: OS がない状態でのハードウェア制御
+-   **アセンブリ言語**: CPU への直接命令
 
--   **x86 registers**: High-speed storage inside CPU
--   **Segment registers**: Old-style memory management
--   **BIOS interrupts**: Hardware control without OS
--   **Assembly language**: Direct instructions to CPU
+## x86 PC の起動プロセス理解
 
-## Understanding x86 PC Boot Process
-
-### 1. From Power-On to BIOS
+### 1. 電源投入から BIOS まで
 
 ```
-Power-On → CPU Initialization → BIOS Startup → Hardware Detection → Bootloader Search
+電源投入 → CPU初期化 → BIOS起動 → ハードウェア検出 → ブートローダー探索
 ```
 
-1. **CPU Initialization**: When power is applied, CPU begins execution from predetermined address (0xFFFFFFF0)
-2. **BIOS Execution**: BIOS program in ROM checks hardware
-3. **Boot Device Search**: Searches for bootable devices in order: floppy disk, hard disk
-4. **MBR Load**: Loads first 512 bytes of found device to address 0x7C00
-5. **Control Transfer**: Begins execution from 0x7C00 (this is our program!)
+1. **CPU 初期化**: 電源が入ると、CPU は決められたアドレス（0xFFFFFFF0）から実行開始
+2. **BIOS 実行**: ROM 内の BIOS プログラムがハードウェアをチェック
+3. **ブートデバイス探索**: フロッピーディスク、ハードディスクの順番で起動可能なデバイスを探索
+4. **MBR 読み込み**: 見つかったデバイスの最初の 512 バイトを 0x7C00 番地にロード
+5. **制御移行**: 0x7C00 から実行開始（ここが私たちのプログラム！）
 
-### 2. Real Mode and Registers
+### 2. リアルモードとレジスタ
 
-**Real Mode** is 16-bit execution mode compatible with 8086 CPU. Even modern 64-bit CPUs always start in this mode after power-on.
+**リアルモード**は 8086 CPU 互換の 16 ビット実行モードです。現代の 64 ビット CPU でも、電源投入時は必ずこのモードから開始します。
 
-#### Main Registers (CPU Internal Storage)
+#### 主要レジスタ（CPU の内部記憶装置）
 
-| Register | Role                              | Example                |
-| -------- | --------------------------------- | ---------------------- |
-| **AX**   | Accumulator (for calculations)    | Temporary save of calculation results |
-| **BX**   | Base register (address calculation) | Memory address calculation |
-| **CX**   | Counter register (for loops)      | Managing repeat counts |
-| **DX**   | Data register (for I/O)          | Storing input/output data |
+| レジスタ | 役割                           | 例                   |
+| -------- | ------------------------------ | -------------------- |
+| **AX**   | アキュムレータ（計算用）       | 計算結果の一時保存   |
+| **BX**   | ベースレジスタ（アドレス計算） | メモリアドレスの計算 |
+| **CX**   | カウンタレジスタ（ループ用）   | 繰り返し回数の管理   |
+| **DX**   | データレジスタ（I/O 用）       | 入出力データの保存   |
 
-#### Segment Registers (Memory Area Specification)
+#### セグメントレジスタ（メモリ領域指定）
 
-| Register | Role                | Description                    |
-| -------- | ------------------- | ------------------------------ |
-| **DS**   | Data segment        | Specifying data storage area   |
-| **ES**   | Extra segment       | Additional data area           |
-| **SS**   | Stack segment       | Save area for function calls  |
-| **CS**   | Code segment        | Area of executing program      |
+| レジスタ | 役割                 | 説明                     |
+| -------- | -------------------- | ------------------------ |
+| **DS**   | データセグメント     | データ格納領域の指定     |
+| **ES**   | エクストラセグメント | 追加データ領域           |
+| **SS**   | スタックセグメント   | 関数呼び出し時の退避領域 |
+| **CS**   | コードセグメント     | 実行中のプログラム領域   |
 
-## Hands-on: Creating First Bootloader
+## 実践: 最初のブートローダー作成
 
-### Step 1: Development Environment Check
+### ステップ 1: 開発環境の確認
 
-First, let's verify that necessary tools are installed:
+まず、必要なツールがインストールされているか確認しましょう：
 
 ```bash
-# Check cross-compiler
+# クロスコンパイラの確認
 i686-elf-gcc --version
 
-# Check assembler
+# アセンブラの確認
 nasm --version
 
-# Check emulator
+# エミュレータの確認
 qemu-system-i386 --version
 ```
 
-If not installed:
+もしインストールされていない場合：
 
 ```bash
-# For macOS
+# macOSの場合
 brew install i686-elf-gcc nasm qemu
 
-# For Ubuntu
+# Ubuntuの場合
 sudo apt install gcc-multilib nasm qemu-system-i386
 ```
 
-### Step 2: Understanding Project Structure
+### ステップ 2: プロジェクト構造の理解
 
-File structure we'll create today:
+今日作成するファイル構成：
 
 ```
 day01/
-├── README.md          # This file
-├── boot.s            # Bootloader assembly code
-├── Makefile          # Build automation script
-└── os.img           # Created bootable image (after execution)
+├── README.md          # このファイル
+├── boot.s            # ブートローダーのアセンブリコード
+├── Makefile          # ビルド自動化スクリプト
+└── os.img           # 作成される起動可能イメージ（実行後）
 ```
 
-### Step 3: Creating Bootloader Assembly Code
+### ステップ 3: ブートローダーのアセンブリコード作成
 
-Create `boot.s` file and enter the following content:
+`boot.s`ファイルを作成し、以下の内容を入力してください：
 
 ```assembly
-; boot.s - First bootloader
-; Runs in x86 real mode (16-bit)
+; boot.s - 最初のブートローダー
+; x86リアルモード（16ビット）で動作
 
-[org 0x7C00]          ; Specify that BIOS loads our code at address 0x7C00
-[bits 16]             ; Assemble in 16-bit mode
+[org 0x7C00]          ; BIOSが私たちのコードを0x7C00番地にロードすることを指定
+[bits 16]             ; 16ビットモードでアセンブル
 
 start:
-    ; === Register Initialization ===
-    ; Set all segment registers to 0 (for safety)
-    cli                ; Disable interrupts (don't want to be disturbed during important initialization)
-    xor ax, ax         ; AX = 0 (XOR of same register results in 0)
-    mov ds, ax         ; Data segment = 0
-    mov es, ax         ; Extra segment = 0
-    mov ss, ax         ; Stack segment = 0
-    mov sp, 0x7C00     ; Set stack pointer just before bootloader
+    ; === レジスタ初期化 ===
+    ; セグメントレジスタをすべて0に設定（安全のため）
+    cli                ; 割り込み無効化（重要な初期化中は邪魔されたくない）
+    xor ax, ax         ; AX = 0（同じレジスタ同士のXORで0になる）
+    mov ds, ax         ; データセグメント = 0
+    mov es, ax         ; エクストラセグメント = 0
+    mov ss, ax         ; スタックセグメント = 0
+    mov sp, 0x7C00     ; スタックポインタをブートローダーの直前に設定
 
-    ; === Display Message ===
-    ; Display "Hello OS!" on screen
-    mov si, hello_msg  ; Set message address in SI register
-    call print_string  ; Call string display function
+    ; === メッセージ表示 ===
+    ; "Hello OS!" を画面に表示
+    mov si, hello_msg  ; SI レジスタにメッセージのアドレスを設定
+    call print_string  ; 文字列表示関数を呼び出し
 
-    ; === Infinite Loop ===
-    ; Infinite loop to prevent program termination
+    ; === 無限ループ ===
+    ; プログラムを終了させないために無限ループ
 infinite_loop:
-    hlt               ; Put CPU to sleep (power saving)
-    jmp infinite_loop ; Infinite loop
+    hlt               ; CPUを休ませる（省電力）
+    jmp infinite_loop ; 無限ループ
 
-; === String Display Function ===
-; Input: SI = string address
-; Destroys: AX, BX
+; === 文字列表示関数 ===
+; 入力：SI = 文字列のアドレス
+; 破壊：AX, BX
 print_string:
-    mov ah, 0x0E      ; BIOS function: character display (Teletype output)
+    mov ah, 0x0E      ; BIOS機能：文字表示（Teletype output）
 .next_char:
-    lodsb             ; Load 1 byte from memory pointed by SI into AL, SI++
-    cmp al, 0         ; Check if character is 0 (string terminator)
-    je .done          ; If 0, exit
-    int 0x10          ; Call BIOS interrupt (character display)
-    jmp .next_char    ; Go to next character
+    lodsb             ; SI が指すメモリから1バイト読み込み、AL に格納、SI++
+    cmp al, 0         ; 文字が0（文字列終端）か確認
+    je .done          ; 0なら終了
+    int 0x10          ; BIOS割り込み呼び出し（文字表示）
+    jmp .next_char    ; 次の文字へ
 .done:
-    ret               ; Return to caller
+    ret               ; 呼び出し元に戻る
 
-; === Data Section ===
+; === データ部 ===
 hello_msg db 'Hello OS! Boot successful!', 13, 10, 0
-    ; db = define byte
-    ; 13 = Carriage Return (CR)
-    ; 10 = Line Feed (LF)
-    ; 0 = String terminator
+    ; db = define byte（バイト定義）
+    ; 13 = キャリッジリターン（CR）
+    ; 10 = ラインフィード（LF）
+    ; 0 = 文字列終端
 
-; === Boot Signature ===
-; Fill remainder with 0 to make exactly 512 bytes
-times 510 - ($ - $$) db 0  ; Fill from current position to 510 bytes with 0
-dw 0xAA55                  ; Boot signature (without this BIOS won't recognize it)
+; === ブートシグネチャ ===
+; 512バイトちょうどにするため、残りを0で埋める
+times 510 - ($ - $$) db 0  ; 現在位置から510バイトまで0で埋める
+dw 0xAA55                  ; ブートシグネチャ（これがないとBIOSが認識しない）
 ```
 
-### Step 4: Creating Makefile
+### ステップ 4: Makefile 作成
 
-Create `Makefile` to automate the build process:
+`Makefile`を作成して、ビルドプロセスを自動化します：
 
 ```makefile
 # Makefile for Day 01 - Basic Boot
-# Simple bootloader build script
+# シンプルなブートローダー用ビルドスクリプト
 
-# === Tool Settings ===
-AS = nasm              # Assembler
-QEMU = qemu-system-i386 # Emulator
+# === ツール設定 ===
+AS = nasm              # アセンブラ
+QEMU = qemu-system-i386 # エミュレータ
 
-# === File Name Settings ===
-BOOT_SRC = boot.s      # Source file
-OS_IMG = os.img        # Boot image
+# === ファイル名設定 ===
+BOOT_SRC = boot.s      # ソースファイル
+OS_IMG = os.img        # 起動イメージ
 
-# === Main Target ===
-# Executed with 'make' or 'make all'
+# === メインターゲット ===
+# 'make' または 'make all' で実行される
 all: $(OS_IMG)
-	@echo "✅ Bootloader creation completed!"
-	@echo "📁 $(OS_IMG) has been created"
-	@echo ""
-	@echo "🚀 To run: make run"
-	@echo "🧹 To clean up: make clean"
+ @echo "✅ ブートローダーの作成が完了しました！"
+ @echo "📁 $(OS_IMG) が作成されました"
+ @echo ""
+ @echo "🚀 実行するには: make run"
+ @echo "🧹 クリーンアップ: make clean"
 
-# === Image File Creation ===
+# === イメージファイル作成 ===
 $(OS_IMG): $(BOOT_SRC)
-	@echo "🔨 Assembling bootloader..."
-	$(AS) -f bin $(BOOT_SRC) -o $(OS_IMG)
-	@echo "📏 Checking file size..."
-	@ls -l $(OS_IMG) | awk '{print "   Size: " $$5 " bytes"}'
-	@if [ `wc -c < $(OS_IMG)` -eq 512 ]; then \
-		echo "✅ Correctly 512 bytes!"; \
-	else \
-		echo "❌ Error: Not 512 bytes"; \
-		exit 1; \
-	fi
+ @echo "🔨 ブートローダーをアセンブルしています..."
+ $(AS) -f bin $(BOOT_SRC) -o $(OS_IMG)
+ @echo "📏 ファイルサイズ確認中..."
+ @ls -l $(OS_IMG) | awk '{print "   サイズ: " $$5 " バイト"}'
+ @if [ `wc -c < $(OS_IMG)` -eq 512 ]; then \
+  echo "✅ 正しく512バイトになりました！"; \
+ else \
+  echo "❌ エラー：512バイトではありません"; \
+  exit 1; \
+ fi
 
-# === QEMU Execution ===
+# === QEMU実行 ===
 run: $(OS_IMG)
-	@echo "🚀 Starting OS in QEMU..."
-	@echo "💡 To exit, close QEMU window or press Ctrl+C"
-	@echo ""
-	$(QEMU) -fda $(OS_IMG) -boot a
+ @echo "🚀 QEMUでOSを起動しています..."
+ @echo "💡 終了するには QEMUウィンドウを閉じるか Ctrl+C を押してください"
+ @echo ""
+ $(QEMU) -fda $(OS_IMG) -boot a
 
 
-# === Debug Execution ===
-# Execute with serial output (useful for debugging, used from Day4 onwards)
+# === デバッグ実行 ===
+# シリアル出力付きで実行（デバッグ時に便利, Day4以降で使用）
 debug: $(OS_IMG)
-	@echo "🔍 Starting in debug mode..."
-	$(QEMU) -fda $(OS_IMG) -boot a -serial stdio -monitor tcp:127.0.0.1:4444,server,nowait
+ @echo "🔍 デバッグモードで起動しています..."
+ $(QEMU) -fda $(OS_IMG) -boot a -serial stdio -monitor tcp:127.0.0.1:4444,server,nowait
 
-# === Cleanup ===
+# === クリーンアップ ===
 clean:
-	@echo "🧹 Deleting generated files..."
-	rm -f $(OS_IMG)
-	@echo "✅ Cleanup complete"
+ @echo "🧹 生成されたファイルを削除しています..."
+ rm -f $(OS_IMG)
+ @echo "✅ クリーンアップ完了"
 
-# === Help ===
+# === ヘルプ ===
 help:
-	@echo "=== Day 01 Bootloader Development ==="
-	@echo ""
-	@echo "Available commands:"
-	@echo "  make all     - Build bootloader"
-	@echo "  make run     - Execute in QEMU"
-	@echo "  make debug   - Execute in debug mode"
-	@echo "  make clean   - Delete generated files"
-	@echo "  make help    - Display this help"
-	@echo ""
-	@echo "📚 Learning points:"
-	@echo "  - 512-byte boot sector"
-	@echo "  - Character display via BIOS interrupts"
-	@echo "  - x86 real mode basics"
+ @echo "=== Day 01 ブートローダー開発 ==="
+ @echo ""
+ @echo "利用可能なコマンド:"
+ @echo "  make all     - ブートローダーをビルド"
+ @echo "  make run     - QEMUで実行"
+ @echo "  make debug   - デバッグモードで実行"
+ @echo "  make clean   - 生成ファイルを削除"
+ @echo "  make help    - このヘルプを表示"
+ @echo ""
+ @echo "📚 学習ポイント:"
+ @echo "  - 512バイトのブートセクター"
+ @echo "  - BIOS割り込みによる文字表示"
+ @echo "  - x86リアルモードの基礎"
 
-# === Phony Targets ===
-# Declare to avoid conflicts with file names
+# === Phonyターゲット ===
+# ファイル名と重複しないよう宣言
 .PHONY: all run debug clean help
 ```
 
-### Step 5: Build and Execute
+### ステップ 5: ビルドと実行
 
-#### 1. Execute Build
+#### 1. ビルド実行
 
 ```bash
 cd day01
 make all
 ```
 
-If successful, output like this will be displayed:
+成功すると以下のような出力が表示されます：
 
 ```
-🔨 Assembling bootloader...
-📏 Checking file size...
-   Size: 512 bytes
-✅ Correctly 512 bytes!
-✅ Bootloader creation completed!
+🔨 ブートローダーをアセンブルしています...
+📏 ファイルサイズ確認中...
+   サイズ: 512 バイト
+✅ 正しく512バイトになりました！
+✅ ブートローダーの作成が完了しました！
 ```
 
-#### 2. Execute
+#### 2. 実行
 
 ```bash
 make run
 ```
 
-If QEMU window opens and displays "Hello OS! Boot successful!", it's successful!
+QEMU ウィンドウが開き、「Hello OS! Boot successful!」が表示されれば成功です！
 
-## Code Explanation: Detailed Line-by-Line Understanding
+## コード解説：行ごとの詳細理解
 
-### Understanding Assembly Instructions
+### アセンブリ命令の理解
 
-#### Basic Instructions
+#### 基本命令
 
-| Instruction | Meaning                      | Example                                             |
-| ----------- | ---------------------------- | --------------------------------------------------- |
-| `mov`       | Move data                    | `mov ax, 0` → Assign 0 to AX                       |
-| `xor`       | Exclusive OR                 | `xor ax, ax` → AX = 0 (fast way to assign 0)       |
-| `cmp`       | Compare                      | `cmp al, 0` → Compare AL with 0                     |
-| `je`        | Jump if equal                | `je .done` → Jump to .done if comparison is equal  |
-| `jmp`       | Unconditional jump           | `jmp infinite_loop` → Infinite loop                 |
-| `int`       | Interrupt call               | `int 0x10` → BIOS screen display function          |
-| `hlt`       | Halt CPU                     | Wait until next interrupt (power saving)           |
+| 命令  | 意味               | 例                                         |
+| ----- | ------------------ | ------------------------------------------ |
+| `mov` | データ移動         | `mov ax, 0` → AX に 0 を代入               |
+| `xor` | 排他的論理和       | `xor ax, ax` → AX = 0（高速な 0 代入方法） |
+| `cmp` | 比較               | `cmp al, 0` → AL と 0 を比較               |
+| `je`  | 等しければジャンプ | `je .done` → 比較結果が等しければ.done へ  |
+| `jmp` | 無条件ジャンプ     | `jmp infinite_loop` → 無限ループ           |
+| `int` | 割り込み呼び出し   | `int 0x10` → BIOS 画面表示機能             |
+| `hlt` | CPU を停止         | 次の割り込みまで待機（省電力）             |
 
-#### BIOS Interrupt 0x10 Details
+#### BIOS 割り込み 0x10 の詳細
 
 ```assembly
-mov ah, 0x0E    ; Function number: Teletype Output
-mov al, 'A'     ; Character to display
-int 0x10        ; Execute → 'A' is displayed on screen
+mov ah, 0x0E    ; 機能番号：Teletype Output
+mov al, 'A'     ; 表示文字
+int 0x10        ; 実行 → 画面に'A'が表示される
 ```
 
--   **AH = 0x0E**: Specify character display function
--   **AL**: ASCII code of character to display
--   **INT 0x10**: Call BIOS screen service
+-   **AH = 0x0E**: 文字表示機能を指定
+-   **AL**: 表示する文字の ASCII コード
+-   **INT 0x10**: BIOS 画面サービス呼び出し
 
-### Understanding Memory Layout
+### メモリレイアウトの理解
 
-#### Real Mode (16-bit) Memory Map
+#### リアルモード（16 ビット）メモリマップ
 
-| Address      | Size   | Purpose                                                             | Importance |
-| ------------ | ------ | ------------------------------------------------------------------- | ---------- |
-| `0x00000000` | 1KB    | Interrupt Vector Table (IVT)<br>- BIOS interrupt function addresses | ⭐⭐⭐     |
-| `0x00000400` | 254B   | BIOS Data Area<br>- Hardware information                           | ⭐⭐       |
-| `0x00000500` | ~30KB  | Free area (DOS era remnant)<br>- Can be used freely               | ⭐         |
-| `0x00007C00` | 512B   | Boot sector (our code)<br>- BIOS places bootloader here          | ⭐⭐⭐⭐⭐ |
-| `0x00007E00` | ~608KB | Free area<br>- Kernel load destination<br>- Can use as stack area | ⭐⭐       |
-| `0x000A0000` | 128KB  | Video RAM<br>- VGA text: `0xB8000`~<br>- Graphics: `0xA0000`~     | ⭐⭐⭐⭐   |
-| `0x000C0000` | 256KB  | BIOS extension ROM<br>- For adapter cards                         | ⭐         |
-| `0x000F0000` | 64KB   | System ROM (BIOS main)<br>- First to execute at startup           | ⭐⭐       |
+| アドレス     | サイズ | 用途                                                                     | 重要度     |
+| ------------ | ------ | ------------------------------------------------------------------------ | ---------- |
+| `0x00000000` | 1KB    | 割り込みベクタテーブル（IVT）<br>- BIOS 割り込み関数のアドレス           | ⭐⭐⭐     |
+| `0x00000400` | 254B   | BIOS データエリア<br>- ハードウェア情報                                  | ⭐⭐       |
+| `0x00000500` | ~30KB  | 空き領域（DOS 時代の名残）<br>- 自由に使用可能                           | ⭐         |
+| `0x00007C00` | 512B   | ブートセクタ（私たちのコード）<br>- BIOS がここにブートローダーを配置    | ⭐⭐⭐⭐⭐ |
+| `0x00007E00` | ~608KB | 空き領域<br>- カーネル読み込み先<br>- スタック領域として使用可能         | ⭐⭐       |
+| `0x000A0000` | 128KB  | ビデオ RAM<br>- VGA テキスト：`0xB8000`〜<br>- グラフィック：`0xA0000`〜 | ⭐⭐⭐⭐   |
+| `0x000C0000` | 256KB  | BIOS 拡張 ROM<br>- アダプタカード用                                      | ⭐         |
+| `0x000F0000` | 64KB   | システム ROM（BIOS 本体）<br>- 起動時最初に実行される                    | ⭐⭐       |
 
-#### Important Address Details
+#### 重要なアドレスの詳細
 
-**0x7C00 (Bootloader)**
+**0x7C00（ブートローダー）**
 
--   Historical reason: For CP/M-86 compatibility
--   Must be exactly 512 bytes: BIOS specification
--   Last 2 bytes must be 0x55AA (boot signature)
+-   歴史的経緯：CP/M-86 の互換性のため
+-   512 バイト厳守：BIOS の仕様
+-   最後の 2 バイトは必ず 0x55AA（ブートシグネチャ）
 
-**0xB8000 (VGA Text Buffer)**
+**0xB8000（VGA テキストバッファ）**
 
--   80×25 characters = 2000 characters
--   Each character 2 bytes (character code + attribute)
--   Total size: 4000 bytes
+-   80×25 文字 = 2000 文字
+-   各文字 2 バイト（文字コード + 属性）
+-   総サイズ：4000 バイト
 
-#### Memory Layout Example
+#### メモリ配置の実例
 
 ```
-Actual layout example (Day 01 execution):
+実際の配置例（Day 01実行時）:
 
-0x7C00  |48 65 6C 6C| "Hello OS!" message
+0x7C00  |48 65 6C 6C| "Hello OS!" メッセージ
 0x7C04  |6F 20 4F 53|
 ...     |    ...     |
-0x7DFE  |55 AA      | Boot signature
-0x7E00  |00 00 00 00| Free area start
+0x7DFE  |55 AA      | ブートシグネチャ
+0x7E00  |00 00 00 00| 空き領域開始
 ```
 
-### Importance of Boot Signature
+### ブートシグネチャの重要性
 
 ```assembly
-times 510 - ($ - $$) db 0  ; Fill remaining area with 0
-dw 0xAA55                  ; Magic number
+times 510 - ($ - $$) db 0  ; 余った領域を0で埋める
+dw 0xAA55                  ; マジックナンバー
 ```
 
--   `$`: Current position
--   `$$`: Section start position
--   `510 - ($ - $$)`: Calculate remaining bytes
--   `0xAA55`: Magic number for BIOS to recognize "this is a bootable sector"
+-   `$`: 現在の位置
+-   `$$`: セクション開始位置
+-   `510 - ($ - $$)`: 残りバイト数を計算
+-   `0xAA55`: BIOS が「これは起動可能なセクタだ」と認識するマジックナンバー
 
-## Troubleshooting
+## トラブルシューティング
 
-### Common Errors and Solutions
+### よくあるエラーと解決法
 
 #### 1. "nasm: command not found"
 
 ```bash
-# For macOS
+# macOSの場合
 brew install nasm
 
-# For Ubuntu
+# Ubuntuの場合
 sudo apt install nasm
 ```
 
 #### 2. "qemu-system-i386: command not found"
 
 ```bash
-# For macOS
+# macOSの場合
 brew install qemu
 
-# For Ubuntu
+# Ubuntuの場合
 sudo apt install qemu-system-i386
 ```
 
-#### 3. "❌ Error: Not 512 bytes"
+#### 3. "❌ エラー：512 バイトではありません"
 
--   Boot sector must be exactly 512 bytes
--   If message is too long, shorten it
--   Check calculation in `times 510 - ($ - $$) db 0`
+-   ブートセクターは必ず 512 バイトである必要があります
+-   メッセージが長すぎる場合は短縮してください
+-   `times 510 - ($ - $$) db 0` の計算を確認してください
 
-#### 4. Nothing displayed on screen
+#### 4. 画面に何も表示されない
 
--   Check BIOS interrupt setting: `mov ah, 0x0E`
--   Confirm string ends with 0
--   Check segment register initialization
+-   BIOS 割り込み設定を確認：`mov ah, 0x0E`
+-   文字列が 0 で終わっていることを確認
+-   セグメントレジスタの初期化を確認
 
-#### 5. QEMU won't start
+#### 5. QEMU が起動しない
 
 ```bash
-# Display detailed error information
+# 詳細なエラー情報を表示
 qemu-system-i386 -drive file=os.img,format=raw,if=floppy -boot a -serial stdio
 ```
 
-## Understanding Check
+## 理解度チェック
 
-Verify you can answer the following questions:
+以下の質問に答えられるか確認してください：
 
-### Basic Understanding
+### 基礎理解
 
-1. **What is the role of BIOS?**
-2. **What is real mode?**
-3. **What is the meaning of address 0x7C00?**
-4. **Why must it be exactly 512 bytes?**
+1. **BIOS の役割は何ですか？**
+2. **リアルモードとは何ですか？**
+3. **0x7C00 という番地の意味は？**
+4. **なぜ 512 バイトちょうどである必要があるのですか？**
 
-### Technical Details
+### 技術詳細
 
-5. **Can you explain the roles of AX, BX, CX, DX registers?**
-6. **What does INT 0x10 function 0x0E do?**
-7. **What is the meaning of 0xAA55?**
-8. **What does `times 510 - ($ - $$) db 0` do?**
+5. **AX、BX、CX、DX レジスタの役割を説明できますか？**
+6. **INT 0x10 の 0x0E 機能は何をしますか？**
+7. **0xAA55 の意味は？**
+8. **`times 510 - ($ - $$) db 0`は何をしていますか？**
 
-### Application Problems
+### 応用問題
 
-9. **Try changing the message**
-10. **Try displaying characters in a different color (hint: BL register)**
+9. **メッセージを変更してみましょう**
+10. **別の色で文字を表示してみましょう（ヒント：BL レジスタ）**
 
-## Preparing for Next Steps
+## 次のステップの準備
 
-Tomorrow's Day 02 will transition from this 16-bit real mode to 32-bit protected mode. Make sure you understand today's content well:
+明日の Day 02 では、この 16 ビットリアルモードから 32 ビットプロテクトモードへ移行します。今日学んだ内容をしっかり理解しておきましょう：
 
--   ✅ x86 boot process
--   ✅ Real mode and registers
--   ✅ BIOS interrupt basics
--   ✅ Assembly language fundamentals
--   ✅ Memory layout
+-   ✅ x86 の起動プロセス
+-   ✅ リアルモードとレジスタ
+-   ✅ BIOS 割り込みの基本
+-   ✅ アセンブリ言語の基礎
+-   ✅ メモリレイアウト
 
-### Recommended Review Items
+### 推奨復習項目
 
-1. **Read assembly instructions aloud** (mov, xor, cmp, etc.)
-2. **Write down and organize register roles on paper**
-3. **Understand why 0x7C00 is special**
-4. **Diagram the boot sequence flow**
+1. **アセンブリ命令を声に出して読む**（mov、xor、cmp など）
+2. **レジスタの役割を紙に書いて整理**
+3. **0x7C00 がなぜ特別なのか理解**
+4. **ブートシーケンスの流れを図解**
 
-### Experimental Modification Ideas
+### 実験的改造案
 
-Additional challenges for motivated learners:
+意欲的な学習者向けの追加課題：
 
-1. **Countdown display**: Show 3, 2, 1... then message
-2. **Colorful display**: Multi-color character display
-3. **Wait for key input**: Add function to wait for keyboard input
-4. **Time display**: Get and display BIOS time
+1. **カウントダウン表示**: 3、2、1... と表示してからメッセージ
+2. **カラフル表示**: 複数色での文字表示
+3. **キー入力待ち**: キーボード入力を待つ機能追加
+4. **時刻表示**: BIOS 時刻取得と表示
 
 ---
 
-🎉 **Great job!**
+🎉 **お疲れさまでした！**
 
-Did your first bootloader work? You now understand the fundamentals of the computer's "heart" - the boot process. Tomorrow we'll advance further and step into the world of modern 32-bit protected mode!
+初めてのブートローダーが動作したでしょうか？これでコンピュータの「心臓」とも言える起動プロセスの基礎を理解できました。明日はさらに進歩して、現代的な 32 ビットプロテクトモードの世界に足を踏み入れます！

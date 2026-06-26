@@ -54,27 +54,22 @@ make help
 
 ```
 mini-os/
-├── src/
-│   ├── kernel/             # Core kernel functionality
-│   │   ├── kernel.c        # Main kernel with threading and scheduling
-│   │   ├── kernel.h        # Kernel function declarations
-│   │   └── error_types.h   # Error code definitions
-│   ├── drivers/            # Device drivers
-│   │   ├── keyboard.c      # PS/2 keyboard driver implementation
-│   │   └── keyboard.h      # Keyboard driver interface
-│   ├── debug/              # Debug and diagnostic utilities
-│   │   ├── debug_utils.c   # Debug functionality implementation
-│   │   └── debug_utils.h   # Debug utility interfaces
-│   ├── boot/               # Boot sequence and low-level code
-│   │   ├── boot.s          # MBR bootloader with GDT and protected mode setup
-│   │   ├── kernel_entry.s  # Assembly entry point with BSS initialization
-│   │   ├── interrupt.s     # Timer interrupt handler and context switch functions
-│   │   └── boot_constants.inc # Assembly constants and definitions
-│   └── linker/             # Linker scripts
-│       └── kernel.ld       # Memory layout definition
-├── tests/                  # Test framework and test cases
-├── docs/                   # Documentation
-└── Makefile               # Build system configuration
+├── docs/                        # Documentation
+│   ├── ARCHITECTURE_ja.md       #   公式アーキテクチャ正本（完成形の設計解説）
+│   └── reference/               #   LLM 比較生成資料（参考用）
+├── day01/ ... day12/            # 各 Day の演習ガイド（README 的み）
+├── day01_completed/ ... day11_completed/  # 各 Day の完成コード（段階的に発展）
+├── day12_completed/             # 最終完成形（開発・テストの起点）
+│   ├── include/                 #   kernel.h, keyboard.h, debug_utils.h, error_types.h
+│   ├── src/
+│   │   ├── boot/                #   boot.s, kernel_entry.s, interrupt.s, boot_constants.inc
+│   │   ├── kernel.c             #   スケジューラ・割込み・VGA/シリアル出力
+│   │   ├── keyboard.c           #   PS/2 ドライバ・SPSC リングバッファ
+│   │   └── debug_utils.c        #   デバッグユーティリティ・メトリクス
+│   ├── linker/kernel.ld         #   メモリレイアウト定義
+│   ├── tests/                   #   テストフレームワーク + 機能テスト群
+│   └── Makefile                 #   ビルドシステム（make all/run/test/analyze）
+└── Makefile                     # ルート（check-env / help 等）
 ```
 
 ### Context Switching Mechanism

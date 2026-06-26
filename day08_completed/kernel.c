@@ -1,4 +1,4 @@
-// Day 08 完成版 - コンテキストスイッチの最小デモ
+// Day 08 完成版 - TCB/READYリストの設計デモ
 #include <stdint.h>
 
 #include "io.h"
@@ -51,102 +51,120 @@ void vga_init(void) {
     vga_clear();
 }
 
-// --- シリアル（COM1）デバッグ ---
-#define COM1 0x3F8
-static inline void serial_init(void) {
-    outb(COM1 + 1, 0x00);
-    outb(COM1 + 3, 0x80);
-    outb(COM1 + 0, 0x03);
-    outb(COM1 + 1, 0x00);
-    outb(COM1 + 3, 0x03);
-    outb(COM1 + 2, 0xC7);
-    outb(COM1 + 4, 0x0B);
-}
-static inline void serial_putc(char c) {
-    while (!(inb(COM1 + 5) & 0x20)) {
-    }
-    outb(COM1 + 0, (uint8_t)c);
-}
-static inline void serial_puts(const char* s) {
-    while (*s) {
-        if (*s == '\n')
-            serial_putc('\r');
-        serial_putc(*s++);
-    }
-}
-static inline void serial_puthex(uint32_t v) {
-    const char* h = "0123456789ABCDEF";
-    for (int i = 7; i >= 0; i--) serial_putc(h[(v >> (i * 4)) & 0xF]);
-}
+// --- Day07: TCB と READY リスト ---
+typedef enum { THREAD_READY, THREAD_RUNNING, THREAD_BLOCKED } thread_state_t;
+typedef enum {
+    BLOCK_REASON_NONE,
+    BLOCK_REASON_TIMER,
+    BLOCK_REASON_KEYBOARD
+} block_reason_t;
 
-// --- Day08: コンテキストスイッチ ---
+#define MAX_THREADS 4
+#define THREAD_STACK_SIZE 1024
 typedef struct thread {
-    uint32_t stack[1024];
+    uint32_t stack[THREAD_STACK_SIZE];
+    thread_state_t state;
+    uint32_t counter, delay_ticks, last_tick;
+    block_reason_t block_reason;
+    uint32_t wake_up_tick;
+    int display_row;
+    struct thread* next_ready;
+    struct thread* next_blocked;
     uint32_t esp;
-    int row;
 } thread_t;
-extern void context_switch(uint32_t** old_esp, uint32_t* new_esp);
 
-static void init_stack(thread_t* t, void (*func)(void)) {
-    uint32_t* sp = &t->stack[1024];
+typedef struct {
+    thread_t* current_thread;
+    thread_t* ready_thread_list;
+    thread_t* blocked_thread_list;
+    uint32_t system_ticks;
+} kernel_context_t;
+static kernel_context_t g_ctx = {0};
 
-    // 正しいスレッド初期化 - switch_contextと互換性のあるスタックレイアウト
-    // switch_context で復元される順序に合わせて積む
-    *--sp =
-        (uint32_t)func;  // 関数アドレス（最初のスレッド実行時にret先になる）
-    // Day08 では割り込みインフラ未整備のため IF=0 にする（予約ビットは1）
-    // EFLAGS = 0x00000002（IF=0, 必須予約ビット=1）
-    *--sp = 0x00000002;  // EFLAGS（IF=0, reserved bit=1）
-    *--sp = 0;           // EBP
-    *--sp = 0;           // EDI
-    *--sp = 0;           // ESI
-    *--sp = 0;           // EDX
-    *--sp = 0;           // ECX
-    *--sp = 0;           // EBX
-    *--sp = 0;           // EAX
-
-    t->esp = (uint32_t)sp;
+static void ready_push_back(thread_t* t) {
+    if (!t)
+        return;
+    if (!g_ctx.ready_thread_list) {
+        g_ctx.ready_thread_list = t;
+        t->next_ready = t;
+        return;
+    }
+    thread_t* head = g_ctx.ready_thread_list;
+    thread_t* last = head;
+    while (last->next_ready != head) last = last->next_ready;
+    t->next_ready = head;
+    last->next_ready = t;
+}
+static thread_t* ready_pop_front(void) {
+    thread_t* head = g_ctx.ready_thread_list;
+    if (!head)
+        return 0;
+    if (head->next_ready == head) {
+        g_ctx.ready_thread_list = 0;
+        head->next_ready = 0;
+        return head;
+    }
+    thread_t* last = head;
+    while (last->next_ready != head) last = last->next_ready;
+    thread_t* ret = head;
+    g_ctx.ready_thread_list = head->next_ready;
+    last->next_ready = g_ctx.ready_thread_list;
+    ret->next_ready = 0;
+    return ret;
 }
 
-static thread_t th1, th2;
-static uint32_t* current_esp = 0;
+static thread_t g_threads[MAX_THREADS];
+static int g_thread_count = 0;
+static thread_t* alloc_thread_slot(void) {
+    if (g_thread_count >= MAX_THREADS)
+        return 0;
+    return &g_threads[g_thread_count++];
+}
+static void init_thread_stack_stub(thread_t* t, void (*func)(void)) {
+    (void)func;
+    t->esp = (uint32_t)&t->stack[THREAD_STACK_SIZE];
+}
 
-static void threadA(void) {
-    vga_set_color(VGA_YELLOW, VGA_BLACK);
-    // 一度だけ表示してアイドル（Day08は割り込み未使用のため、連続描画はチラつきやすい）
-    vga_move_cursor(0, 10);
-    vga_puts("Thread A running...");
-    serial_puts("Thread A running\n");
-    for (;;) {
-        __asm__ volatile("nop");
+int create_thread(void (*func)(void), uint32_t delay_ticks, int display_row,
+                  thread_t** out) {
+    if (!func || !out)
+        return -1;
+    *out = 0;
+    thread_t* t = alloc_thread_slot();
+    if (!t)
+        return -2;
+    t->state = THREAD_READY;
+    t->counter = 0;
+    t->delay_ticks = delay_ticks ? delay_ticks : 1;
+    t->last_tick = 0;
+    t->block_reason = BLOCK_REASON_NONE;
+    t->wake_up_tick = 0;
+    t->display_row = display_row;
+    t->next_ready = 0;
+    t->next_blocked = 0;
+    init_thread_stack_stub(t, func);
+    ready_push_back(t);
+    *out = t;
+    return 0;
+}
+
+void demo_thread_func_A(void) {
+    for (;;) { /* Day09以降で実装 */
     }
 }
-static void threadB(void) {
-    // Day08ではここには来ない
-    vga_set_color(VGA_CYAN, VGA_BLACK);
-    vga_move_cursor(0, 11);
-    vga_puts("Thread B running...");
-    serial_puts("[This is NOT printed] Thread B running\n");
-    for (;;) {
-        __asm__ volatile("nop");
+void demo_thread_func_B(void) {
+    for (;;) { /* Day09以降で実装 */
     }
 }
 
 void kmain(void) {
-    serial_init();
-    serial_puts("KMAIN begin\n");
     vga_init();
-    vga_puts("Day 08: Context Switch demo\n");
-    th1.row = 10;
-    th2.row = 11;
-    init_stack(&th1, threadA);
-    init_stack(&th2, threadB);
-    serial_puts("SWITCH to th1 esp=");
-    serial_puthex(th1.esp);
-    serial_puts("\n");
-    // 最初のスレッドへ切替
-    context_switch(&current_esp, (uint32_t*)th1.esp);
-    serial_puts("RETURNED unexpectedly\n");
+    vga_puts("Day 08: Thread TCB design\n");
+    thread_t *t1 = 0, *t2 = 0;
+    create_thread(demo_thread_func_A, 10, 10, &t1);
+    create_thread(demo_thread_func_B, 20, 11, &t2);
+    if (g_ctx.ready_thread_list)
+        vga_puts("READY list initialized\n");
     for (;;) {
         __asm__ volatile("hlt");
     }
