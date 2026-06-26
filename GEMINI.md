@@ -43,7 +43,7 @@ make test > makeout.txt 2>&1
 - `include/`: ヘッダーファイル
 - `linker/`: リンカースクリプト (`kernel.ld`)
 - `tests/`: テストコードとモックハードウェア
-- `docs/`: 設計ドキュメント (`ARCHITECTURE_ja.md` 等)
+- (設計ドキュメントはルート `../docs/` を参照: `ARCHITECTURE_ja.md` 正本・`reference/` 比較資料)
 
 ### コーディングスタイル
 - **言語**: C (gnu99), NASM (elf32/bin)

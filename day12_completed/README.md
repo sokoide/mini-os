@@ -1,6 +1,8 @@
-# Mini OS - 教育用マルチスレッドオペレーティングシステム
+# Mini OS - 教育用マルチスレッドオペレーティングシステム（Day 12 完成形）
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](Makefile) [![Quality Score](https://img.shields.io/badge/quality-98%2F100-brightgreen.svg)](../docs/reference/QUALITY_ja.md) [![Documentation](https://img.shields.io/badge/docs-Japanese-blue.svg)](docs/) [![Architecture](https://img.shields.io/badge/arch-x86--32bit-orange.svg)](#アーキテクチャ概要)
+> 📘 **本ディレクトリは 12 日間カリキュラム（[day01](../day01/) 〜 [day12](../day12/)）の最終到達点となる完成形コードです。** 学習の進め方はルートの [README.md](../README.md)、設計の詳細は [../docs/ARCHITECTURE_ja.md](../docs/ARCHITECTURE_ja.md) を参照してください。
+
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](Makefile) [![Quality Score](https://img.shields.io/badge/quality-98%2F100-brightgreen.svg)](../docs/reference/QUALITY_ja.md) [![Documentation](https://img.shields.io/badge/docs-Japanese-blue.svg)](../docs/) [![Architecture](https://img.shields.io/badge/arch-x86--32bit-orange.svg)](#アーキテクチャ概要)
 
 > **x86 32 ビットアーキテクチャ上で動作する高品質な教育用マルチスレッドオペレーティングシステム**
 >
