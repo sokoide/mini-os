@@ -62,3 +62,6 @@ core.*
 .serena/
 .opencode/
 .vscode/
+
+# AI handoff file (セッション間の状態管理用、git管理対象外)
+.ai-handoff.md
